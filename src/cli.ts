@@ -12,10 +12,12 @@ type ParsedArgs = {
   prRef: string | null;
   guide: string | undefined;
   noGuide: boolean;
+  host: boolean;
 };
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const host = args.host;
 
   if (!args.prRef) {
     printUsage();
@@ -71,7 +73,9 @@ async function main() {
     server: {
       port: 0,
       strictPort: false,
-      open: !process.env.PR_TOUR_NO_OPEN,
+      open: !process.env.PR_TOUR_NO_OPEN && !host,
+      host: host ? true : undefined,
+      allowedHosts: host ? true : undefined,
     },
     clearScreen: false,
   });
@@ -82,7 +86,7 @@ async function main() {
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
-  const out: ParsedArgs = { prRef: null, guide: undefined, noGuide: false };
+  const out: ParsedArgs = { prRef: null, guide: undefined, noGuide: false, host: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "-h" || a === "--help") {
@@ -91,6 +95,10 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
     if (a === "--no-guide") {
       out.noGuide = true;
+      continue;
+    }
+    if (a === "--host") {
+      out.host = true;
       continue;
     }
     if (a === "--guide") {
@@ -116,7 +124,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 function printUsage() {
   console.log(
-    "usage: pr-tour <pr-ref> [--guide <path>] [--no-guide]\n" +
+    "usage: pr-tour <pr-ref> [--guide <path>] [--no-guide] [--host]\n" +
       "\n" +
       "  <pr-ref> is one of:\n" +
       "    349                            (number; uses current gh repo)\n" +
@@ -127,7 +135,10 @@ function printUsage() {
       "  tour guide:\n" +
       "    auto-loads .pr-tour-guide.yml (or .yaml) from cwd if present\n" +
       "    --guide <path>   use an explicit tour file\n" +
-      "    --no-guide       ignore any tour file, show files alphabetically"
+      "    --no-guide       ignore any tour file, show files alphabetically\n" +
+      "\n" +
+      "  network:\n" +
+      "    --host           bind to all interfaces (for remote-dev access)"
   );
 }
 
