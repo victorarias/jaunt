@@ -742,9 +742,16 @@ a:hover {
   scrollbar-width: thin;
 }
 
-/* Full-file mode: a little extra padding since no +/- marker */
+/* Full-file mode: wrap long lines instead of clipping — plan/design docs
+   have long prose that should re-flow to the available width. Line numbers
+   stay top-aligned so they pair with the first visual row of a wrapped line. */
+.code.full .row {
+  align-items: flex-start;
+}
 .code.full .row .line {
   padding-left: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 /* Inline annotation thread */
@@ -1017,21 +1024,6 @@ a:hover {
   background: color-mix(in srgb, var(--accent) 12%, var(--bg-1));
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
   color: var(--accent);
-}
-
-.kbd-help {
-  position: fixed;
-  bottom: 16px;
-  left: 20px;
-  font-size: 10.5px;
-  color: var(--fg-dimmer);
-  pointer-events: none;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.kbd-help .kbd {
-  margin: 0 2px;
 }
 
 /* ── Modal ──────────────────────────────────────────────── */

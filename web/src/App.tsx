@@ -271,12 +271,6 @@ function Review({ pr }: { pr: PRPayload }) {
         onOpenSubmit={() => setSubmitOpen(true)}
       />
 
-      <div className="kbd-help">
-        <span className="kbd">J</span>/<span className="kbd">→</span> next ·
-        <span className="kbd">K</span>/<span className="kbd">←</span> prev ·
-        <span className="kbd">R</span> reviewed
-      </div>
-
       {submitOpen && (
         <SubmitDialog
           files={files}
