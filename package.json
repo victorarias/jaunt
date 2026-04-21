@@ -1,0 +1,30 @@
+{
+  "name": "pr-tour",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "pr-tour": "./src/cli.ts"
+  },
+  "scripts": {
+    "start": "bun run src/cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "shiki": "^4.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.3",
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "tailwindcss": "^4.2.3",
+    "vite": "^8.0.9"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
