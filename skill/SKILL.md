@@ -36,19 +36,19 @@ summary: |
 files:
   - path: docs/plans/2026-04-18-foo.md
     view: content                      # optional, default "diff"
-    note: Ground truth. Decision tables (DT-*), invariants (INV-*).
+    note: Start here. DT-* are the decision tables, INV-* the invariants. The service implements these literally.
     annotations:
       - anchor: "## Decision table 2"  # pin a note to a line
-        note: The service enforces these pair rules.
+        note: The pair rules. If it's not in this table, the service rejects it.
       - anchor: "INV-5"
-        note: First-writer-wins — load-bearing invariant for the whole PR.
+        note: First-writer-wins. Everything else in the service assumes this holds.
 
   - path: server/internal/foo/model.go
     note: |
-      The Foo aggregate. Enums first — everything keys off these.
+      The aggregate. Start with the enums — the rest just switches on them.
     annotations:
       - anchor: "type Status"
-        note: The status enum the rest of the system keys off.
+        note: The state machine in three lines. Worth reading before the service.
 
 skip:
   - server/internal/platform/postgres/sqlcgen/queries.sql.go
@@ -66,13 +66,26 @@ skip:
 
 Prefer `anchor` over exact line numbers — it's more stable against edits and you don't need to re-check line numbers if the file changes.
 
+## Voice
+
+The tour is **pedagogic** — it walks a reviewer through *your* mental model so they arrive where you already are. Assume they're smart but haven't seen this PR before; don't assume they know the codebase's conventions, the plan doc, or the constraints that shaped the design.
+
+Four rules of thumb, in order:
+
+1. **Teach, don't list.** Notes should build understanding, not enumerate changes. "Enums first — the rest of the system keys off these states" teaches. "Adds Status and Priority enums" lists. The diff lists already. Line-pinned annotations have a sharper version of this rule — see step 5b.
+2. **Be concise.** Pedagogic is not the same as thorough. A note that takes 5 lines to say what 2 would is worse than the 2-line version, not better. Short sentences. No filler ("basically", "essentially", "it's worth noting that"). If you can delete a sentence without losing meaning, delete it.
+3. **Assume a smart reader.** No hand-holding on standard patterns (what a repository adapter does, what an HTTP handler looks like). Explain what's *non-obvious* — the invariant, the tradeoff, the constraint you bowed to — and trust the reviewer on the rest.
+4. **Sound like a friendly engineer, not a textbook.** You're writing for a teammate, not an audience — think senior engineer who actively wants the reviewer to *get it*, not one showing off how tight the code is. Loose register. Contractions. First person where it helps (*"I almost went the other way here"*, *"you'll probably wonder about the retry loop — it got messy, had to be"*). Little asides when a decision is weird or annoying are good; so is meeting the reader where they are (*"if you've read the plan, this'll be familiar"*). What to avoid: stiff openers (*"This module provides..."*, *"The purpose of this file is..."*), smugness, and cold one-line pronouncements (*"Use this. Don't simplify."*) that shut the reader down. A good note reads like how you'd walk a teammate through the PR on a good day — confident, casual, generous with context.
+
+A good tour feels like a sharp colleague walking you through the codebase at a whiteboard. A bad tour feels like a compliance checklist.
+
 ## Workflow
 
 ### 0. How did you get here?
 
 Before anything else, figure out which branch you're on:
 
-- **Same session that authored the PR** — you already have the diff, the decisions, and (usually) the plan docs in context. Skip step 1's gather; you know what's load-bearing. Lean heavily on `thread:` annotations (see 5b) to pre-empt pushback on decisions the reviewer hasn't seen justified — this is the highest-leverage thing you can do, and only you know which choices were contested.
+- **Same session that authored the PR** — you already have the diff, the decisions, and (usually) the plan docs in context. Skip step 1's gather; you know which choices were contested and which lines enforce them. Lean heavily on `thread:` annotations (see 5b) to pre-empt pushback on decisions the reviewer hasn't seen justified — this is the highest-leverage thing you can do, and only you know which choices were contested.
 
 - **Fresh session / not the author** — you know nothing. Do step 1 in full, and also:
   - `gh pr diff <ref>` — read the **entire** diff before writing anything. File lists with add/del counts are not enough to write good notes; notes require knowing what the code does.
@@ -87,13 +100,13 @@ gh pr view <ref> --json number,title,body,url,headRefName,baseRefName,author,com
 gh api --paginate "/repos/<owner>/<repo>/pulls/<n>/files" --jq '.[] | {path: .filename, status, additions, deletions}'
 ```
 
-Read the PR body in full. Note anything the author flagged as generated (goes to `skip`), anything they called out as load-bearing (goes to `files` with annotations), and anything stated as a tradeoff or open question (goes to the summary). If the body links to a plan/design doc (`docs/plans/*.md`, `docs/design/*.md`), that doc is almost always the first tour entry.
+Read the PR body in full. Note anything the author flagged as generated (goes to `skip`), anything they called out as consequential or non-obvious (goes to `files` with annotations), and anything stated as a tradeoff or open question (goes to the summary). If the body links to a plan/design doc (`docs/plans/*.md`, `docs/design/*.md`), that doc is almost always the first tour entry.
 
 ### 2. Understand the shape
 
 Count files. Group by directory/layer (domain / ports / services / adapters / tests / migrations / generated). This shapes everything downstream.
 
-**Small PRs (≤ 8 files):** a tour is often not worth it *if* the change is mechanical (rename, dependency bump, formatting). If the change is small but load-bearing (a new invariant, a subtle race fix), write a short tour with 1–2 annotations — that's where a tour earns its keep. Same-session authors should default to producing the tour; only ask the user if the PR is genuinely trivial.
+**Small PRs (≤ 8 files):** a tour is often not worth it *if* the change is mechanical (rename, dependency bump, formatting). If the change is small but consequential (a new invariant, a subtle race fix), write a short tour with 1–2 annotations — that's where a tour earns its keep. Same-session authors should default to producing the tour; only ask the user if the PR is genuinely trivial.
 
 **Large PRs (30+ files):** a tour earns its keep. Budget your reading — read the plan, the domain model, and a couple of service/test files. Don't read every file; that's what the reviewer is for.
 
@@ -127,7 +140,7 @@ Always put these under `skip` (they still appear, dimmed; the reviewer can glanc
 
 ### 5. Write the notes
 
-**Each note answers: "what should the reader pay attention to in this file?"** — not "what does this file do" (the diff shows that).
+Follow the **Voice** principles above. Each note answers: *"what should the reader pay attention to in this file, and why?"* — not "what does this file do" (the diff shows that).
 
 Good notes reference:
 - **Invariants** the file enforces (`INV-5`, `INV-1`)
@@ -137,12 +150,14 @@ Good notes reference:
 - **Why this file now** (gives context the diff lacks)
 - **Cross-references** ("start here, then follow outward")
 
-Keep notes 1–5 lines. Longer is fine when the file is load-bearing (the service, the plan). Short is fine for thin files (a repository adapter, a gRPC handler).
+**Length**: 1–3 lines is the sweet spot. Up to 5 for a file the PR hinges on (the service, the plan). A one-line note is fine for a thin file — don't pad. If you find yourself writing a paragraph, you're probably restating the diff.
 
 Bad notes to avoid:
 - *"This file defines the Foo struct."* — the diff shows that.
 - *"Added new method Bar."* — same.
 - *"Refactored to be cleaner."* — the reviewer decides that.
+- *"This module is responsible for handling..."* — boilerplate opener; cut to the teaching point.
+- *"The code comment says X"* / *"As the docstring notes..."* — repeating text the reader already sees isn't a note; give the reason the line matters.
 
 ### 5a. Decide `view:` per file
 
@@ -159,20 +174,22 @@ Do NOT switch to `content` for:
 
 ### 5b. Add line-level annotations (optional, but high-leverage)
 
-For load-bearing files, add `annotations:` to pin 1–5 notes to specific lines. This is where the tour adds the most value: it tells the reader *exactly* where the important stuff is instead of making them hunt.
+For the files that carry the design (the service, the plan doc, the aggregate that everything keys off), add `annotations:` to pin 1–5 notes to specific lines. This is where the tour adds the most value: it tells the reader *exactly* where the important stuff is instead of making them hunt.
+
+**An annotation is a pin, not a transcript.** The reader already sees the anchored line right above your note — the app renders it inline. So the annotation must never copy the line back at them: don't paste the function signature, don't echo the inline code comment, don't paraphrase the plan-doc paragraph the pin sits inside. That's wasted ink. Use the note for context the line doesn't carry — *why* this line matters, the invariant it enforces, the constraint that forced this shape, the downstream behavior that hinges on it. This rule bites hardest on plan docs: the plan is already well-written prose, so an annotation that restates it adds nothing. If the line already says everything that needs saying, don't pin it.
 
 **When to annotate:**
 - Plan / design doc: pin the status table, the key decision tables, each major invariant
 - Service / domain model: pin the function enforcing a decision rule, the enum everything keys off
-- Tests: pin the most load-bearing test (e.g. tenant-isolation, first-writer-wins)
+- Tests: pin the most critical test (e.g. tenant-isolation, first-writer-wins)
 
 **Anchor syntax (prefer this):**
 ```yaml
 annotations:
   - anchor: "## Decision table 2"   # substring match; first occurrence
-    note: The service enforces these pair rules.
+    note: The pair rules. If it's not in this table, the service rejects it.
   - anchor: "func (s *Service) Resolve"
-    note: First-writer-wins lives here (INV-5).
+    note: First-writer-wins lives here (INV-5). The CAS is what actually enforces it.
 ```
 
 Pick anchors that are distinctive and unlikely to appear twice — heading text, function signatures, specific constants. The anchor just needs to be a substring of some line; leading/trailing whitespace in the line is fine.
@@ -181,7 +198,7 @@ Pick anchors that are distinctive and unlikely to appear twice — heading text,
 
 **Line numbers** (`line: N` or `start: N, end: M`) work too, but prefer anchors — they survive file edits. Reach for `line:` only when there's no distinctive text to anchor on. Use `start:+end:` when the annotation covers a block you want highlighted together (a transaction, a state machine, a Lua script), not a single line.
 
-**Keep annotation notes short** (1–2 lines). Long explanation belongs in the file-level note. An annotation is a pin: "look here, because X".
+**Keep annotation notes short** (1–2 lines). Long explanation belongs in the file-level note.
 
 #### Thread form — anticipate pushback
 
@@ -190,11 +207,12 @@ When a decision is likely to draw a "why not X?" reply, use `thread:` instead of
 ```yaml
 - anchor: "func (s *Service) Resolve"
   thread:
-    - "First-writer-wins enforced here (INV-5) — the CAS is load-bearing."
+    - "First-writer-wins lives here (INV-5). The CAS is what actually enforces it."
     - author: claude[bot]
       body: |
-        Considered retry-on-conflict; rejected because it breaks idempotency
-        when the caller is a webhook.
+        Went back and forth on retry-on-conflict — dropped it in the end
+        because it breaks idempotency when the caller's a webhook, and here
+        it almost always is.
 ```
 
 Items are either bare strings (agent-authored) or `{author, body}` mappings.
@@ -254,6 +272,7 @@ Tell the user:
 
 - Invent files or line references you didn't verify.
 - Paraphrase the diff in notes — the reader can see it.
+- Transcribe the anchored line into its annotation. Copying the function signature, the inline code comment, or a paragraph from a plan doc wastes the pin — the reader already sees the line. Annotations add *why*, not *what*.
 - Write a 20-line note on a 5-line change.
 - Skip reading the diff on a fresh session just because the file list looks familiar. File names ≠ content.
 - Pick ambiguous anchors and hope the first match is right. Verify, or lengthen.
