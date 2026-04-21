@@ -26,7 +26,11 @@ export function Thread({ annotation, index, reply, onReplyChange }: Props) {
       </div>
       <div className="thread-body">
         {annotation.comments.map((c, i) => (
-          <CommentBubble key={i} comment={c} />
+          <CommentBubble
+            key={i}
+            comment={c}
+            showAuthor={i === 0 || annotation.comments[i - 1]!.author !== c.author}
+          />
         ))}
       </div>
       <div className="thread-reply">
@@ -42,12 +46,20 @@ export function Thread({ annotation, index, reply, onReplyChange }: Props) {
   );
 }
 
-function CommentBubble({ comment }: { comment: Comment }) {
+function CommentBubble({
+  comment,
+  showAuthor,
+}: {
+  comment: Comment;
+  showAuthor: boolean;
+}) {
   return (
     <div className="comment">
-      <div className="comment-head">
-        <span className="comment-author">{comment.author}</span>
-      </div>
+      {showAuthor && (
+        <div className="comment-head">
+          <span className="comment-author">{comment.author}</span>
+        </div>
+      )}
       <div className="comment-body">{comment.body}</div>
     </div>
   );
