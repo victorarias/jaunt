@@ -1,12 +1,24 @@
 import { readFile, stat } from "node:fs/promises";
 import { join, isAbsolute, resolve } from "node:path";
 import { parse as parseYAML } from "yaml";
-import type { PRFile, PRPayload, TourMeta } from "./types.ts";
+import type { Annotation, FileView, PRFile, PRPayload, TourMeta } from "./types.ts";
+
+export type TourAnnotation =
+  | { kind: "anchor"; anchor: string; note: string }
+  | { kind: "line"; line: number; note: string }
+  | { kind: "range"; start: number; end: number; note: string };
+
+export type TourFileEntry = {
+  path: string;
+  note: string;
+  view: FileView;
+  annotations: TourAnnotation[];
+};
 
 export type Tour = {
   version: 1;
   summary: string;
-  files: Array<{ path: string; note: string }>;
+  files: TourFileEntry[];
   skip: string[];
 };
 
@@ -56,9 +68,13 @@ function normalizeTour(input: unknown, sourcePath: string): Tour {
           `tour file ${sourcePath}: every entry under "files" must be { path: string, note?: string }`
         );
       }
+      const view = parseView(entry.view, entry.path, sourcePath);
+      const annotations = parseAnnotations(entry.annotations, entry.path, sourcePath);
       files.push({
         path: entry.path,
         note: typeof entry.note === "string" ? entry.note.trim() : "",
+        view,
+        annotations,
       });
     }
   }
@@ -79,7 +95,78 @@ function normalizeTour(input: unknown, sourcePath: string): Tour {
   return { version: 1, summary, files, skip };
 }
 
-export function applyTour(payload: PRPayload, tour: Tour): PRPayload {
+function parseView(raw: unknown, path: string, sourcePath: string): FileView {
+  if (raw === undefined || raw === null) return "diff";
+  if (raw === "diff" || raw === "content") return raw;
+  throw new Error(
+    `tour file ${sourcePath}: "${path}".view must be "diff" or "content" (got ${JSON.stringify(raw)})`
+  );
+}
+
+function parseAnnotations(
+  raw: unknown,
+  path: string,
+  sourcePath: string
+): TourAnnotation[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) {
+    throw new Error(
+      `tour file ${sourcePath}: "${path}".annotations must be a list`
+    );
+  }
+  const out: TourAnnotation[] = [];
+  for (const entry of raw) {
+    if (!isRecord(entry)) {
+      throw new Error(
+        `tour file ${sourcePath}: each annotation on "${path}" must be a mapping`
+      );
+    }
+    const note = typeof entry.note === "string" ? entry.note.trim() : "";
+    if (!note) {
+      throw new Error(
+        `tour file ${sourcePath}: annotation on "${path}" is missing a note`
+      );
+    }
+    const hasAnchor = typeof entry.anchor === "string";
+    const hasLine = typeof entry.line === "number";
+    const hasRange = typeof entry.start === "number" && typeof entry.end === "number";
+    const specified = [hasAnchor, hasLine, hasRange].filter(Boolean).length;
+    if (specified !== 1) {
+      throw new Error(
+        `tour file ${sourcePath}: annotation on "${path}" must have exactly one of anchor, line, or start+end`
+      );
+    }
+    if (hasAnchor) {
+      out.push({ kind: "anchor", anchor: (entry.anchor as string), note });
+    } else if (hasLine) {
+      const line = entry.line as number;
+      if (!Number.isInteger(line) || line < 1) {
+        throw new Error(
+          `tour file ${sourcePath}: annotation on "${path}" has invalid line ${line}`
+        );
+      }
+      out.push({ kind: "line", line, note });
+    } else {
+      const start = entry.start as number;
+      const end = entry.end as number;
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
+        throw new Error(
+          `tour file ${sourcePath}: annotation on "${path}" has invalid start/end (${start}..${end})`
+        );
+      }
+      out.push({ kind: "range", start, end, note });
+    }
+  }
+  return out;
+}
+
+export type ContentLoader = (path: string) => Promise<string | null>;
+
+export async function applyTour(
+  payload: PRPayload,
+  tour: Tour,
+  loadContent: ContentLoader
+): Promise<PRPayload> {
   const byPath = new Map<string, PRFile>();
   for (const f of payload.files) byPath.set(f.path, f);
 
@@ -95,10 +182,41 @@ export function applyTour(payload: PRPayload, tour: Tour): PRPayload {
       );
       continue;
     }
+
+    const needsContent = entry.view === "content" || entry.annotations.length > 0;
+    let content: string | null = null;
+    if (needsContent) {
+      try {
+        content = await loadContent(entry.path);
+      } catch (err) {
+        warnings.push(
+          `tour: failed to fetch content for "${entry.path}": ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
+
+    const resolved = resolveAnnotations(
+      entry.annotations,
+      entry.path,
+      content,
+      warnings
+    );
+
+    let view: FileView = entry.view;
+    if (view === "content" && content === null) {
+      warnings.push(
+        `tour: "${entry.path}" requested view=content but content is unavailable; falling back to diff`
+      );
+      view = "diff";
+    }
+
     tourOrdered.push({
       ...file,
       tourNote: entry.note || null,
       tourGroup: "tour",
+      view,
+      content,
+      annotations: resolved,
     });
     seen.add(entry.path);
   }
@@ -132,6 +250,52 @@ export function applyTour(payload: PRPayload, tour: Tour): PRPayload {
     files: [...tourOrdered, ...others, ...skipped],
     tour: meta,
   };
+}
+
+function resolveAnnotations(
+  annotations: TourAnnotation[],
+  path: string,
+  content: string | null,
+  warnings: string[]
+): Annotation[] {
+  if (annotations.length === 0) return [];
+  const lines = content === null ? null : content.split("\n");
+  const out: Annotation[] = [];
+  for (const a of annotations) {
+    if (a.kind === "anchor") {
+      if (!lines) {
+        warnings.push(
+          `tour: "${path}" has anchor "${a.anchor}" but file content is unavailable`
+        );
+        continue;
+      }
+      const idx = lines.findIndex((l) => l.includes(a.anchor));
+      if (idx < 0) {
+        warnings.push(
+          `tour: "${path}" anchor "${a.anchor}" not found in file`
+        );
+        continue;
+      }
+      out.push({ lineStart: idx + 1, lineEnd: idx + 1, note: a.note });
+    } else if (a.kind === "line") {
+      if (lines && a.line > lines.length) {
+        warnings.push(
+          `tour: "${path}" annotation line ${a.line} is past end of file (${lines.length} lines)`
+        );
+        continue;
+      }
+      out.push({ lineStart: a.line, lineEnd: a.line, note: a.note });
+    } else {
+      if (lines && a.end > lines.length) {
+        warnings.push(
+          `tour: "${path}" annotation end ${a.end} is past end of file (${lines.length} lines)`
+        );
+        continue;
+      }
+      out.push({ lineStart: a.start, lineEnd: a.end, note: a.note });
+    }
+  }
+  return out;
 }
 
 async function exists(p: string): Promise<boolean> {

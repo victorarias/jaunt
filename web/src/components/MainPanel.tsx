@@ -1,6 +1,7 @@
 import type { Draft, PRFile } from "../types.ts";
 import { fileStateOf } from "../hooks/useDraft.ts";
 import { DiffView } from "./DiffView.tsx";
+import { ContentView } from "./ContentView.tsx";
 import type { Highlighter } from "../hooks/useHighlighter.ts";
 
 type Props = {
@@ -58,7 +59,11 @@ export function MainPanel({
             {file.tourNote}
           </div>
         )}
-        <DiffView file={file} highlighter={highlighter} />
+        {file.view === "content" ? (
+          <ContentView file={file} highlighter={highlighter} />
+        ) : (
+          <DiffView file={file} highlighter={highlighter} />
+        )}
       </div>
 
       <div className="border-t border-neutral-800 p-3">

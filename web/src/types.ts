@@ -1,10 +1,12 @@
 export type {
+  Annotation,
   Draft,
   DiffHunk,
   DiffLine,
   DiffLineType,
   FileDraft,
   FileStatus,
+  FileView,
   PRFile,
   PRMeta,
   PRPayload,

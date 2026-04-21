@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
-import { fetchPR, submitReviewComment } from "./gh.ts";
+import { fetchFileContent, fetchPR, submitReviewComment } from "./gh.ts";
 import { clearDraft, loadDraft, saveDraft } from "./drafts.ts";
 import { applyTour, type Tour } from "./tour.ts";
 import type { Draft, PRPayload, PRRef, SubmitResult } from "./types.ts";
@@ -15,7 +15,20 @@ export function apiPlugin(opts: { ref: PRRef; tour: Tour | null }): Plugin {
         await respondJSON(res, async () => {
           if (!cachedPR) {
             const fetched = await fetchPR(opts.ref);
-            cachedPR = opts.tour ? applyTour(fetched, opts.tour) : fetched;
+            if (opts.tour) {
+              const contentCache = new Map<string, Promise<string | null>>();
+              const loadContent = (path: string): Promise<string | null> => {
+                let p = contentCache.get(path);
+                if (!p) {
+                  p = fetchFileContent(opts.ref, fetched.meta.headSha, path);
+                  contentCache.set(path, p);
+                }
+                return p;
+              };
+              cachedPR = await applyTour(fetched, opts.tour, loadContent);
+            } else {
+              cachedPR = fetched;
+            }
           }
           return cachedPR;
         });

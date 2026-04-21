@@ -50,6 +50,9 @@ export async function fetchPR(ref: PRRef): Promise<PRPayload> {
     language: inferLanguage(f.filename),
     tourNote: null,
     tourGroup: "other",
+    view: "diff",
+    content: null,
+    annotations: [],
   }));
 
   return { meta, files, tour: null };
@@ -226,4 +229,19 @@ export async function submitReviewComment(
   const slug = `${ref.owner}/${ref.repo}`;
   await $`gh pr review ${ref.number} --repo ${slug} --comment --body ${body}`.quiet();
   return `https://github.com/${slug}/pull/${ref.number}`;
+}
+
+export async function fetchFileContent(
+  ref: PRRef,
+  sha: string,
+  path: string
+): Promise<string | null> {
+  const slug = `${ref.owner}/${ref.repo}`;
+  const apiPath = `/repos/${slug}/contents/${path}?ref=${sha}`;
+  try {
+    const result = await $`gh api ${apiPath} -H ${"Accept: application/vnd.github.raw"}`.quiet();
+    return result.stdout.toString("utf-8");
+  } catch {
+    return null;
+  }
 }

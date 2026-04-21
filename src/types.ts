@@ -35,6 +35,14 @@ export type DiffHunk = {
 
 export type FileStatus = "added" | "modified" | "deleted" | "renamed";
 
+export type FileView = "diff" | "content";
+
+export type Annotation = {
+  lineStart: number;
+  lineEnd: number;
+  note: string;
+};
+
 export type PRFile = {
   path: string;
   oldPath: string | null;
@@ -46,6 +54,9 @@ export type PRFile = {
   language: string | null;
   tourNote: string | null;
   tourGroup: "tour" | "other" | "skip";
+  view: FileView;
+  content: string | null;
+  annotations: Annotation[];
 };
 
 export type TourMeta = {

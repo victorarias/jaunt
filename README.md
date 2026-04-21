@@ -2,9 +2,11 @@
 
 A local web app for reviewing GitHub PRs in a curated order with inline notes, synced back to the PR as a single review comment.
 
-## Status: v0.2
+## Status: v0.3
 
-- File-level notes (no line-level yet)
+- File-level notes
+- Line-level annotations (anchor, line, or start+end range) pinned to the diff
+- Per-file `view: diff | content` mode — plan docs can render their full text with pins instead of the diff
 - One-way push-and-clear sync
 - Tour YAML ingestion (local file)
 
@@ -47,15 +49,22 @@ summary: |
 
 files:
   - path: docs/plans/foo.md
+    view: content                      # default: diff — use "content" for plan/design docs
     note: Ground truth — decision tables and invariants.
-
-  - path: server/internal/background/model.go
-    note: |
-      Domain aggregate. DT-2 "status/source pair rules" are enforced
-      in service.go — start here, then follow outward.
+    annotations:
+      - anchor: "## Decision table 2"  # substring match; first occurrence
+        note: The service enforces these pair rules.
+      - anchor: "INV-5"
+        note: First-writer-wins is the load-bearing invariant here.
 
   - path: server/internal/background/service.go
     note: OpenCall / Resolve — the behavior.
+    annotations:
+      - line: 145                      # exact line number in the post-PR file
+        note: DT-2 pair-rule enforcement entry point.
+      - start: 200
+        end: 230
+        note: First-writer-wins block (INV-5).
 
 skip:
   - server/internal/platform/postgres/sqlcgen/queries.sql.go
@@ -66,6 +75,12 @@ skip:
 - `files` entries appear first, in order, numbered, with their `note` shown above the diff
 - Files not in `files` or `skip` appear next under "Other files"
 - `skip` entries appear last under "Skipped", dimmed — nothing is ever hidden
+- `view: content` renders the full post-PR file (syntax-highlighted) instead of the diff — useful for plan/design docs whose diff is all-add and gives no structure
+- `annotations` pin notes to specific lines:
+  - `anchor: "..."` — first line containing this substring (recommended; stable across edits)
+  - `line: N` — exact line number in the post-PR file
+  - `start: N, end: M` — inclusive line range
+  - annotations resolve against the full post-PR file; in `diff` mode they're pinned to the matching diff row (or listed under "Annotations outside the diff" if the line isn't in any hunk)
 - Paths referenced by the guide that don't match any PR file become a warning in the sidebar
 - Currently the tour is loaded once at startup; restart the server after editing the guide
 
