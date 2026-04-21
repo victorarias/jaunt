@@ -202,20 +202,21 @@ Pick anchors that are distinctive and unlikely to appear twice — heading text,
 
 #### Thread form — anticipate pushback
 
-When a decision is likely to draw a "why not X?" reply, use `thread:` instead of `note:`. Each thread is a mini conversation pinned to a line — the first comment states the concern, subsequent comments pre-empt the likely counter-argument:
+When a decision is likely to draw a "why not X?" reply, use `thread:` instead of `note:`. Each thread is a sequence of comments pinned to a line — the first one states the point, subsequent ones pre-empt the likely counter-argument:
 
 ```yaml
 - anchor: "func (s *Service) Resolve"
   thread:
     - "First-writer-wins lives here (INV-5). The CAS is what actually enforces it."
-    - author: claude[bot]
-      body: |
-        Went back and forth on retry-on-conflict — dropped it in the end
-        because it breaks idempotency when the caller's a webhook, and here
-        it almost always is.
+    - |
+      Went back and forth on retry-on-conflict — dropped it in the end
+      because it breaks idempotency when the caller's a webhook, and here
+      it almost always is.
 ```
 
-Items are either bare strings (agent-authored) or `{author, body}` mappings.
+**Default to bare strings.** Both bubbles are authored by *you* (the agent writing the tour), so both render under the same "agent" byline — that's correct. Do not use `{ author: claude[bot], body: ... }` to make the follow-up feel like a second voice; it's the same voice, and a split byline makes the thread read like a two-person dialogue when it isn't. Two bubbles already give the visual separation.
+
+Only reach for `{author, body}` when you're quoting a genuinely different voice — e.g., the PR author's own words from the description, or a past reviewer's comment you want to preserve context on.
 
 **This is the highest-leverage annotation form for same-session authors.** You already know which choices were contested, which alternatives you rejected, and why. Surfacing the rejected alternative in a follow-up comment saves the reviewer a round-trip ("why didn't you just…?"). Use `thread:` whenever:
 - You picked an option that isn't the obvious default
