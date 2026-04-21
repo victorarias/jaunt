@@ -253,13 +253,29 @@ It parses the YAML with the same loader the app uses, then reports:
 
 **Do not improvise your own YAML validation** (no `python -c "import yaml..."`, no inline scripts, no eyeballing the file yourself). `pr-tour validate` is the contract — it catches everything the app will silently misinterpret, and it's the one source of truth. If `pr-tour` isn't on `$PATH`, run `cd ~/projects/pr-tour && bun run src/cli.ts validate [guide-path]` from the target repo's directory (pass the guide path explicitly since cwd will be the pr-tour repo).
 
-### 9. Report
+### 9. Launch the app
 
-Tell the user:
+Once `validate` is clean, start the server yourself — don't leave it as a command for the user to copy. Spawn in the background so it doesn't block your session:
+
+```bash
+pr-tour <pr-ref>           # on the user's own machine; auto-opens the browser
+pr-tour <pr-ref> --host    # on a remote dev machine (ssh, codespace, sandbox);
+                           # prints a URL like http://<hostname>:5174 for the
+                           # user to open in their own browser — no auto-open
+```
+
+If `pr-tour` isn't on `$PATH`, fall back to `cd ~/projects/pr-tour && bun run start <pr-ref>` (same `--host` rule applies).
+
+**Heads up: the tour is loaded once at startup.** If you (or the user) edit `.pr-tour-guide.yml` after launching, the running server won't pick up the change — kill it (Ctrl-C) and re-run `pr-tour <pr-ref>`. Tell the user this when you report, so they don't wonder why a tweak isn't showing up.
+
+### 10. Report
+
+Tell the user, tersely:
 - The file you wrote and where
 - Count of tour / other / skip entries
 - The `pr-tour validate` result (clean / N warnings)
-- The command to launch the review: `pr-tour <pr-ref>` (or `cd ~/projects/pr-tour && bun run start <pr-ref>` if not globally installed)
+- The URL the app is serving at (localhost, or the remote hostname if you used `--host`)
+- The "re-run if the YAML changes" reminder
 
 ## Edge cases
 
