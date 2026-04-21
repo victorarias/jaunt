@@ -80,6 +80,8 @@ export type FileDraft = {
   note: string;
   /** Per-annotation pending reply text. Key is the annotation's index in the file's annotations array. */
   replies: Record<string, string>;
+  /** Reviewer-authored comments keyed by post-PR line number (stringified). */
+  lineComments: Record<string, string>;
 };
 
 export type Draft = {

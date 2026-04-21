@@ -30,13 +30,13 @@ export function Thread({ annotation, index, reply, onReplyChange }: Props) {
         ))}
       </div>
       <div className="thread-reply">
+        {reply.trim() && <span className="reply-hint">draft reply</span>}
         <textarea
           value={reply}
           onChange={(e) => onReplyChange(index, e.target.value)}
           placeholder="Reply, or ask the agent to clarify…"
           rows={reply.split("\n").length > 2 ? 4 : 2}
         />
-        {reply.trim() && <span className="reply-hint">draft reply</span>}
       </div>
     </div>
   );

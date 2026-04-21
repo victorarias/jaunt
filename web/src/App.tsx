@@ -66,6 +66,7 @@ function Review({ pr }: { pr: PRPayload }) {
     toggleReviewed,
     setFileNote,
     setAnnotationReply,
+    setLineComment,
     clearLocal,
   } = useDraft(pr.meta.ref);
 
@@ -234,6 +235,7 @@ function Review({ pr }: { pr: PRPayload }) {
               onToggleReviewed={toggleReviewed}
               onNoteChange={setFileNote}
               onSetReply={setAnnotationReply}
+              onSetLineComment={setLineComment}
             />
           ))}
           {files.length > 0 && (

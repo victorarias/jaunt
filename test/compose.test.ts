@@ -34,6 +34,7 @@ describe("composeReviewBody", () => {
           reviewed: true,
           note: "tiny nit about naming",
           replies: {},
+          lineComments: {},
         },
       },
     });
@@ -61,6 +62,7 @@ describe("composeReviewBody", () => {
           reviewed: true,
           note: "",
           replies: { "0": "reply to 12", "1": "reply to range" },
+          lineComments: {},
         },
       },
     });
@@ -82,6 +84,7 @@ describe("composeReviewBody", () => {
           reviewed: false,
           note: "",
           replies: { "0": "  ", "9": "orphan" },
+          lineComments: {},
         },
       },
     });
@@ -90,6 +93,52 @@ describe("composeReviewBody", () => {
     expect(body).not.toContain("orphan");
     // When no per-file sections remain, the Notes-by-file block is omitted.
     expect(body).not.toContain("### Notes by file");
+  });
+
+  test("includes reviewer-authored line comments sorted by line number", () => {
+    const file = makeFile({ path: "src/a.ts" });
+    const d = makeDraft({
+      fileStates: {
+        "src/a.ts": {
+          reviewed: true,
+          note: "overall thought",
+          replies: {},
+          lineComments: {
+            "42": "thought on line 42",
+            "7": "thought on line 7",
+            "100": "   ",
+          },
+        },
+      },
+    });
+    const body = composeReviewBody("comment", "", d, [file]);
+    expect(body).toContain("**src/a.ts**");
+    expect(body).toContain("overall thought");
+    expect(body).toContain("_on line 7:_\n\nthought on line 7");
+    expect(body).toContain("_on line 42:_\n\nthought on line 42");
+    // Line 7 section comes before line 42 section.
+    expect(body.indexOf("_on line 7:_")).toBeLessThan(
+      body.indexOf("_on line 42:_"),
+    );
+    // Whitespace-only comments are skipped.
+    expect(body).not.toContain("_on line 100:_");
+  });
+
+  test("emits a file section with only line comments even if note+replies are empty", () => {
+    const file = makeFile({ path: "src/a.ts" });
+    const d = makeDraft({
+      fileStates: {
+        "src/a.ts": {
+          reviewed: false,
+          note: "",
+          replies: {},
+          lineComments: { "3": "single observation" },
+        },
+      },
+    });
+    const body = composeReviewBody("comment", "", d, [file]);
+    expect(body).toContain("**src/a.ts**");
+    expect(body).toContain("_on line 3:_\n\nsingle observation");
   });
 
   test("omits Notes-by-file when no files have content", () => {

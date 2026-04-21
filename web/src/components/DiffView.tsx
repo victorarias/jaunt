@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { BundledLanguage, ThemedToken } from "shiki";
 import type { Annotation, DiffHunk, DiffLine, PRFile } from "../types.ts";
 import {
@@ -7,12 +7,15 @@ import {
   type Highlighter,
 } from "../hooks/useHighlighter.ts";
 import { Thread } from "./Thread.tsx";
+import { UserLineComment } from "./UserLineComment.tsx";
 
 type Props = {
   file: PRFile;
   highlighter: Highlighter | null;
   replies: Record<string, string>;
   onSetReply: (annotationIdx: number, text: string) => void;
+  lineComments: Record<string, string>;
+  onSetLineComment: (line: number, text: string) => void;
 };
 
 type IndexedAnnotation = { index: number; annotation: Annotation };
@@ -48,11 +51,39 @@ function assignAnnotationsToLines(file: PRFile): {
   return { byDiffKey, outsideDiff };
 }
 
-export function DiffView({ file, highlighter, replies, onSetReply }: Props) {
+export function DiffView({
+  file,
+  highlighter,
+  replies,
+  onSetReply,
+  lineComments,
+  onSetLineComment,
+}: Props) {
   const lang = resolveLang(file.language);
   const { byDiffKey, outsideDiff } = useMemo(
     () => assignAnnotationsToLines(file),
     [file],
+  );
+  const [openLines, setOpenLines] = useState<Set<number>>(new Set());
+  const openLine = useCallback((n: number) => {
+    setOpenLines((s) => {
+      if (s.has(n)) return s;
+      const next = new Set(s);
+      next.add(n);
+      return next;
+    });
+  }, []);
+  const closeLine = useCallback(
+    (n: number) => {
+      setOpenLines((s) => {
+        if (!s.has(n)) return s;
+        const next = new Set(s);
+        next.delete(n);
+        return next;
+      });
+      onSetLineComment(n, "");
+    },
+    [onSetLineComment],
   );
 
   if (file.hunks.length === 0) {
@@ -97,6 +128,11 @@ export function DiffView({ file, highlighter, replies, onSetReply }: Props) {
           byDiffKey={byDiffKey}
           replies={replies}
           onSetReply={onSetReply}
+          openLines={openLines}
+          onOpenLine={openLine}
+          onCloseLine={closeLine}
+          lineComments={lineComments}
+          onSetLineComment={onSetLineComment}
         />
       ))}
     </div>
@@ -111,6 +147,11 @@ function HunkView({
   byDiffKey,
   replies,
   onSetReply,
+  openLines,
+  onOpenLine,
+  onCloseLine,
+  lineComments,
+  onSetLineComment,
 }: {
   hunkIndex: number;
   hunk: DiffHunk;
@@ -119,6 +160,11 @@ function HunkView({
   byDiffKey: Map<string, IndexedAnnotation[]>;
   replies: Record<string, string>;
   onSetReply: (annotationIdx: number, text: string) => void;
+  openLines: Set<number>;
+  onOpenLine: (line: number) => void;
+  onCloseLine: (line: number) => void;
+  lineComments: Record<string, string>;
+  onSetLineComment: (line: number, text: string) => void;
 }) {
   return (
     <>
@@ -132,6 +178,9 @@ function HunkView({
       </div>
       {hunk.lines.map((line, i) => {
         const hits = byDiffKey.get(`${hunkIndex}:${i}`);
+        const n = line.newNumber;
+        const hasComment = n !== null && String(n) in lineComments;
+        const formOpen = n !== null && (openLines.has(n) || hasComment);
         return (
           <div key={i}>
             <LineRow
@@ -139,6 +188,9 @@ function HunkView({
               lang={lang}
               highlighter={highlighter}
               annotated={!!hits?.length}
+              onAddComment={
+                n !== null && !formOpen ? () => onOpenLine(n) : null
+              }
             />
             {hits?.map(({ index, annotation }) => (
               <Thread
@@ -149,6 +201,15 @@ function HunkView({
                 onReplyChange={onSetReply}
               />
             ))}
+            {formOpen && n !== null && (
+              <UserLineComment
+                line={n}
+                text={lineComments[String(n)] ?? ""}
+                onChange={(t) => onSetLineComment(n, t)}
+                onClose={() => onCloseLine(n)}
+                autoFocus={openLines.has(n) && !hasComment}
+              />
+            )}
           </div>
         );
       })}
@@ -161,11 +222,13 @@ function LineRow({
   lang,
   highlighter,
   annotated,
+  onAddComment,
 }: {
   line: DiffLine;
   lang: BundledLanguage | "plaintext";
   highlighter: Highlighter | null;
   annotated: boolean;
+  onAddComment: (() => void) | null;
 }) {
   const tokens = useMemo(
     () => tokenize(line.content, lang, highlighter),
@@ -188,6 +251,17 @@ function LineRow({
           <span>{line.content}</span>
         )}
       </pre>
+      {onAddComment && (
+        <button
+          type="button"
+          className="add-comment-btn"
+          onClick={onAddComment}
+          title="Comment on this line"
+          aria-label="Comment on this line"
+        >
+          +
+        </button>
+      )}
     </div>
   );
 }

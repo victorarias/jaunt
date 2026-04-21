@@ -13,6 +13,7 @@ type Props = {
   onToggleReviewed: (path: string) => void;
   onNoteChange: (path: string, note: string) => void;
   onSetReply: (path: string, annotationIdx: number, text: string) => void;
+  onSetLineComment: (path: string, line: number, text: string) => void;
 };
 
 export function FileCard({
@@ -24,11 +25,17 @@ export function FileCard({
   onToggleReviewed,
   onNoteChange,
   onSetReply,
+  onSetLineComment,
 }: Props) {
-  const { reviewed, note, replies } = fileStateOf(draft, file.path);
+  const { reviewed, note, replies, lineComments } = fileStateOf(
+    draft,
+    file.path,
+  );
   const deemph = file.tourGroup === "skip";
   const handleSetReply = (idx: number, text: string) =>
     onSetReply(file.path, idx, text);
+  const handleSetLineComment = (line: number, text: string) =>
+    onSetLineComment(file.path, line, text);
 
   return (
     <div
@@ -86,6 +93,8 @@ export function FileCard({
           highlighter={highlighter}
           replies={replies}
           onSetReply={handleSetReply}
+          lineComments={lineComments}
+          onSetLineComment={handleSetLineComment}
         />
       ) : (
         <DiffView
@@ -93,6 +102,8 @@ export function FileCard({
           highlighter={highlighter}
           replies={replies}
           onSetReply={handleSetReply}
+          lineComments={lineComments}
+          onSetLineComment={handleSetLineComment}
         />
       )}
 

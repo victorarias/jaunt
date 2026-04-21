@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { BundledLanguage, ThemedToken } from "shiki";
 import type { Annotation, PRFile } from "../types.ts";
 import {
@@ -7,12 +7,15 @@ import {
   type Highlighter,
 } from "../hooks/useHighlighter.ts";
 import { Thread } from "./Thread.tsx";
+import { UserLineComment } from "./UserLineComment.tsx";
 
 type Props = {
   file: PRFile;
   highlighter: Highlighter | null;
   replies: Record<string, string>;
   onSetReply: (annotationIdx: number, text: string) => void;
+  lineComments: Record<string, string>;
+  onSetLineComment: (line: number, text: string) => void;
 };
 
 type LineAnnotation = { index: number; annotation: Annotation };
@@ -22,6 +25,8 @@ export function ContentView({
   highlighter,
   replies,
   onSetReply,
+  lineComments,
+  onSetLineComment,
 }: Props) {
   const lang = resolveLang(file.language);
 
@@ -49,6 +54,28 @@ export function ContentView({
     return set;
   }, [file.annotations]);
 
+  const [openLines, setOpenLines] = useState<Set<number>>(new Set());
+  const openLine = useCallback((n: number) => {
+    setOpenLines((s) => {
+      if (s.has(n)) return s;
+      const next = new Set(s);
+      next.add(n);
+      return next;
+    });
+  }, []);
+  const closeLine = useCallback(
+    (n: number) => {
+      setOpenLines((s) => {
+        if (!s.has(n)) return s;
+        const next = new Set(s);
+        next.delete(n);
+        return next;
+      });
+      onSetLineComment(n, "");
+    },
+    [onSetLineComment],
+  );
+
   if (file.content === null) {
     return (
       <div
@@ -71,6 +98,8 @@ export function ContentView({
         const lineNum = i + 1;
         const hits = annotationsByStart.get(lineNum);
         const annotated = annotatedLines.has(lineNum);
+        const hasComment = String(lineNum) in lineComments;
+        const formOpen = openLines.has(lineNum) || hasComment;
         return (
           <div key={i}>
             <ContentLine
@@ -79,6 +108,7 @@ export function ContentView({
               lang={lang}
               highlighter={highlighter}
               annotated={annotated}
+              onAddComment={!formOpen ? () => openLine(lineNum) : null}
             />
             {hits?.map(({ index, annotation }) => (
               <Thread
@@ -89,6 +119,15 @@ export function ContentView({
                 onReplyChange={onSetReply}
               />
             ))}
+            {formOpen && (
+              <UserLineComment
+                line={lineNum}
+                text={lineComments[String(lineNum)] ?? ""}
+                onChange={(t) => onSetLineComment(lineNum, t)}
+                onClose={() => closeLine(lineNum)}
+                autoFocus={openLines.has(lineNum) && !hasComment}
+              />
+            )}
           </div>
         );
       })}
@@ -102,12 +141,14 @@ function ContentLine({
   lang,
   highlighter,
   annotated,
+  onAddComment,
 }: {
   lineNum: number;
   content: string;
   lang: BundledLanguage | "plaintext";
   highlighter: Highlighter | null;
   annotated: boolean;
+  onAddComment: (() => void) | null;
 }) {
   const tokens = useMemo(
     () => tokenize(content, lang, highlighter),
@@ -133,6 +174,17 @@ function ContentLine({
           <span>{content}</span>
         )}
       </pre>
+      {onAddComment && (
+        <button
+          type="button"
+          className="add-comment-btn"
+          onClick={onAddComment}
+          title="Comment on this line"
+          aria-label="Comment on this line"
+        >
+          +
+        </button>
+      )}
     </div>
   );
 }

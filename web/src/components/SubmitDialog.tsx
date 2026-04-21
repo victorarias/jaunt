@@ -78,6 +78,7 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
 
   if (view.kind === "done") {
     const { outcome } = view;
+    const { ref } = draft;
     return (
       <div
         className="modal-backdrop"
@@ -95,64 +96,40 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
             </span>
           </div>
           <div className="modal-body">
-            <p style={{ fontFamily: "var(--sans)" }}>
-              {outcome.target === "github" ? (
-                <>
+            {outcome.target === "github" ? (
+              <>
+                <p style={{ fontFamily: "var(--sans)" }}>
                   Your review was posted to GitHub. The local draft has been
                   cleared.
-                </>
-              ) : (
-                <>
-                  Your feedback was written locally. The invoking agent can
-                  read the file at the path below.
-                </>
-              )}
-            </p>
-            <div className="submitted-meta">
-              <div>
-                <span>verdict</span>
-                <b className={`verdict-${view.verdict}`}>
-                  {view.verdict.replace("_", " ")}
-                </b>
-              </div>
-              <div>
-                <span>target</span>
-                <b>
-                  {outcome.target === "github" ? "GitHub" : "agent (local)"}
-                </b>
-              </div>
-              <div>
-                <span>files walked</span>
-                <b>
-                  {view.reviewedCount}/{view.totalFiles}
-                </b>
-              </div>
-              <div>
-                <span>body</span>
-                <b>{view.body.length} chars</b>
-              </div>
-              {outcome.target === "github" && (
-                <div>
-                  <span>url</span>
-                  <b>
-                    <a
-                      href={outcome.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ wordBreak: "break-all" }}
-                    >
-                      {outcome.url}
-                    </a>
-                  </b>
+                </p>
+                <div className="submitted-meta">
+                  <div>
+                    <span>verdict</span>
+                    <b className={`verdict-${view.verdict}`}>
+                      {view.verdict.replace("_", " ")}
+                    </b>
+                  </div>
+                  <div>
+                    <span>url</span>
+                    <b>
+                      <a
+                        href={outcome.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ wordBreak: "break-all" }}
+                      >
+                        {outcome.url}
+                      </a>
+                    </b>
+                  </div>
                 </div>
-              )}
-              {outcome.target === "agent" && (
-                <div>
-                  <span>path</span>
-                  <b style={{ wordBreak: "break-all" }}>{outcome.path}</b>
-                </div>
-              )}
-            </div>
+              </>
+            ) : (
+              <AgentPromptPanel
+                path={outcome.path}
+                ownerRepoNumber={`${ref.owner}/${ref.repo}#${ref.number}`}
+              />
+            )}
           </div>
           <div className="modal-actions">
             <button type="button" className="btn" onClick={onClose}>
@@ -312,6 +289,76 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+function agentPrompt(ownerRepoNumber: string, path: string): string {
+  return [
+    `I finished reviewing ${ownerRepoNumber} via pr-tour.`,
+    ``,
+    `Read the feedback file at:`,
+    `  ${path}`,
+    ``,
+    `It contains a verdict (Approve / Comment / Request changes), an optional summary, per-file notes, and line-pinned comments written as "_on line N:_". Work through the notes and comments in file order — address each point in code or reply briefly explaining why you won't. If the verdict is "Approve", no changes are needed.`,
+  ].join("\n");
+}
+
+function AgentPromptPanel({
+  ownerRepoNumber,
+  path,
+}: {
+  ownerRepoNumber: string;
+  path: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const prompt = agentPrompt(ownerRepoNumber, path);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API may be unavailable on insecure origins; select fallback.
+      const el = document.getElementById(
+        "agent-prompt-text",
+      ) as HTMLTextAreaElement | null;
+      if (el) {
+        el.select();
+        document.execCommand("copy");
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }
+    }
+  }
+
+  return (
+    <>
+      <p style={{ fontFamily: "var(--sans)" }}>
+        Your feedback was written locally. Copy the prompt below and paste it
+        into the agent session that should act on the review.
+      </p>
+      <div className="agent-prompt">
+        <div className="agent-prompt-head">
+          <span>agent prompt</span>
+          <button
+            type="button"
+            className="btn sm"
+            onClick={handleCopy}
+            aria-label="Copy prompt"
+          >
+            {copied ? "✓ copied" : "Copy"}
+          </button>
+        </div>
+        <textarea
+          id="agent-prompt-text"
+          readOnly
+          value={prompt}
+          rows={8}
+          onFocus={(e) => e.currentTarget.select()}
+        />
+      </div>
+    </>
   );
 }
 

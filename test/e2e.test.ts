@@ -89,6 +89,7 @@ describe("e2e — thread reply round-trip to agent feedback file", () => {
           replies: {
             "0": "noted — confirmed the INCR+PEXPIRE runs atomically",
           },
+          lineComments: {},
         },
       },
     };

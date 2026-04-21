@@ -137,6 +137,7 @@ describe("createApiHandlers.putDraft", () => {
           reviewed: true,
           note: "note",
           replies: { "0": "reply body" },
+          lineComments: {},
         },
       },
     });

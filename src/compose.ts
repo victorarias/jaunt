@@ -34,6 +34,7 @@ export function composeReviewBody(
     const state = draft.fileStates[f.path];
     const note = state?.note.trim() ?? "";
     const replies = state?.replies ?? {};
+    const lineComments = state?.lineComments ?? {};
 
     const sections: string[] = [];
     if (note) sections.push(note);
@@ -49,6 +50,16 @@ export function composeReviewBody(
           ? `line ${ann.lineStart}`
           : `lines ${ann.lineStart}–${ann.lineEnd}`;
       sections.push(`_on ${range}:_\n\n${replyText}`);
+    }
+
+    const sortedLines = Object.keys(lineComments)
+      .map((k) => parseInt(k, 10))
+      .filter((n) => Number.isFinite(n))
+      .sort((a, b) => a - b);
+    for (const line of sortedLines) {
+      const text = lineComments[String(line)]?.trim();
+      if (!text) continue;
+      sections.push(`_on line ${line}:_\n\n${text}`);
     }
 
     if (sections.length > 0) {

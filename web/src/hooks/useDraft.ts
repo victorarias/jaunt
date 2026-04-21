@@ -103,6 +103,24 @@ export function useDraft(ref: PRRef | null) {
     [mutate]
   );
 
+  const setLineComment = useCallback(
+    (path: string, line: number, text: string) =>
+      mutate((d) => {
+        const cur = fileStateOf(d, path);
+        const next = { ...cur.lineComments };
+        if (text) next[String(line)] = text;
+        else delete next[String(line)];
+        return {
+          ...d,
+          fileStates: {
+            ...d.fileStates,
+            [path]: { ...cur, lineComments: next },
+          },
+        };
+      }),
+    [mutate]
+  );
+
   const clearLocal = useCallback(() => {
     setDraft((d) => (d ? { ...d, overallBody: "", fileStates: {} } : d));
     latestDraft.current = draft
@@ -117,6 +135,7 @@ export function useDraft(ref: PRRef | null) {
     toggleReviewed,
     setFileNote,
     setAnnotationReply,
+    setLineComment,
     clearLocal,
   };
 }
@@ -127,5 +146,6 @@ export function fileStateOf(draft: Draft, path: string): FileDraft {
     reviewed: existing?.reviewed ?? false,
     note: existing?.note ?? "",
     replies: existing?.replies ?? {},
+    lineComments: existing?.lineComments ?? {},
   };
 }
