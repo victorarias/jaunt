@@ -6,16 +6,19 @@ import {
   resolveLang,
   type Highlighter,
 } from "../hooks/useHighlighter.ts";
+import { Thread } from "./Thread.tsx";
 
 type Props = {
   file: PRFile;
   highlighter: Highlighter | null;
+  replies: Record<string, string>;
+  onSetReply: (annotationIdx: number, text: string) => void;
 };
 
 type IndexedAnnotation = { index: number; annotation: Annotation };
 
-// For each annotation, pick the first diff line (new-side number in range) as
-// its anchor; if none, the annotation is "outside diff" and rendered above.
+// Anchor each annotation to the first diff line whose new-side number falls in
+// its range. Annotations that don't resolve into the diff are listed above.
 function assignAnnotationsToLines(file: PRFile): {
   byDiffKey: Map<string, IndexedAnnotation[]>;
   outsideDiff: IndexedAnnotation[];
@@ -45,41 +48,43 @@ function assignAnnotationsToLines(file: PRFile): {
   return { byDiffKey, outsideDiff };
 }
 
-export function DiffView({ file, highlighter }: Props) {
+export function DiffView({ file, highlighter, replies, onSetReply }: Props) {
   const lang = resolveLang(file.language);
   const { byDiffKey, outsideDiff } = useMemo(
     () => assignAnnotationsToLines(file),
-    [file]
+    [file],
   );
 
   if (file.hunks.length === 0) {
     return (
-      <div className="p-8 text-sm text-neutral-500 italic">
+      <div
+        style={{
+          padding: "32px 24px",
+          color: "var(--fg-dimmer)",
+          fontSize: 13,
+          fontStyle: "italic",
+          fontFamily: "var(--sans)",
+        }}
+      >
         No textual diff available for this file.
       </div>
     );
   }
 
   return (
-    <div className="font-mono text-[12.5px] leading-5">
+    <div className="code">
       {outsideDiff.length > 0 && (
-        <div className="bg-amber-500/5 border-b border-amber-500/20 px-4 py-2 font-sans text-[12px]">
-          <div className="text-[10px] uppercase tracking-wide text-amber-400/80 mb-1">
-            Annotations outside the diff
-          </div>
-          <ul className="space-y-1.5">
-            {outsideDiff.map(({ index, annotation }) => (
-              <li key={index} className="text-amber-100/90 whitespace-pre-wrap leading-relaxed">
-                <span className="text-amber-400/80 mr-2">
-                  {index + 1} ·{" "}
-                  {annotation.lineStart === annotation.lineEnd
-                    ? `line ${annotation.lineStart}`
-                    : `lines ${annotation.lineStart}–${annotation.lineEnd}`}
-                </span>
-                {annotation.note}
-              </li>
-            ))}
-          </ul>
+        <div className="outside-notice">
+          <div className="ot-title">Annotations outside the diff</div>
+          {outsideDiff.map(({ index, annotation }) => (
+            <Thread
+              key={index}
+              annotation={annotation}
+              index={index}
+              reply={replies[String(index)] ?? ""}
+              onReplyChange={onSetReply}
+            />
+          ))}
         </div>
       )}
       {file.hunks.map((hunk, hIdx) => (
@@ -90,6 +95,8 @@ export function DiffView({ file, highlighter }: Props) {
           lang={lang}
           highlighter={highlighter}
           byDiffKey={byDiffKey}
+          replies={replies}
+          onSetReply={onSetReply}
         />
       ))}
     </div>
@@ -102,65 +109,50 @@ function HunkView({
   lang,
   highlighter,
   byDiffKey,
+  replies,
+  onSetReply,
 }: {
   hunkIndex: number;
   hunk: DiffHunk;
   lang: BundledLanguage | "plaintext";
   highlighter: Highlighter | null;
   byDiffKey: Map<string, IndexedAnnotation[]>;
+  replies: Record<string, string>;
+  onSetReply: (annotationIdx: number, text: string) => void;
 }) {
   return (
-    <div className="border-b border-neutral-800/60">
-      <div className="px-4 py-1.5 bg-neutral-900/60 text-neutral-400 text-[11px]">
+    <>
+      <div className="hunk-header">
         @@ −{hunk.oldStart},{hunk.oldLines} +{hunk.newStart},{hunk.newLines} @@
         {hunk.header ? (
-          <span className="ml-3 text-neutral-500">{hunk.header}</span>
+          <span style={{ marginLeft: 10, color: "var(--fg-dimmer)" }}>
+            {hunk.header}
+          </span>
         ) : null}
       </div>
-      <div>
-        {hunk.lines.map((line, i) => {
-          const hits = byDiffKey.get(`${hunkIndex}:${i}`);
-          return (
-            <div key={i}>
-              <LineRow
-                line={line}
-                lang={lang}
-                highlighter={highlighter}
-                annotated={!!hits?.length}
+      {hunk.lines.map((line, i) => {
+        const hits = byDiffKey.get(`${hunkIndex}:${i}`);
+        return (
+          <div key={i}>
+            <LineRow
+              line={line}
+              lang={lang}
+              highlighter={highlighter}
+              annotated={!!hits?.length}
+            />
+            {hits?.map(({ index, annotation }) => (
+              <Thread
+                key={index}
+                annotation={annotation}
+                index={index}
+                reply={replies[String(index)] ?? ""}
+                onReplyChange={onSetReply}
               />
-              {hits?.map(({ index, annotation }) => (
-                <AnnotationBlock
-                  key={index}
-                  index={index}
-                  annotation={annotation}
-                />
-              ))}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function AnnotationBlock({
-  index,
-  annotation,
-}: {
-  index: number;
-  annotation: Annotation;
-}) {
-  const range =
-    annotation.lineStart === annotation.lineEnd
-      ? `line ${annotation.lineStart}`
-      : `lines ${annotation.lineStart}–${annotation.lineEnd}`;
-  return (
-    <div className="ml-16 my-1.5 mr-4 bg-amber-500/10 border-l-2 border-amber-500/60 rounded-r px-3 py-2 text-[13px] text-amber-100/90 whitespace-pre-wrap leading-relaxed font-sans">
-      <div className="text-[10px] uppercase tracking-wide text-amber-400/80 mb-0.5">
-        Annotation {index + 1} · {range}
-      </div>
-      {annotation.note}
-    </div>
+            ))}
+          </div>
+        );
+      })}
+    </>
   );
 }
 
@@ -177,33 +169,15 @@ function LineRow({
 }) {
   const tokens = useMemo(
     () => tokenize(line.content, lang, highlighter),
-    [line.content, lang, highlighter]
+    [line.content, lang, highlighter],
   );
-
-  const rowBg =
-    line.type === "add"
-      ? "bg-emerald-950/40"
-      : line.type === "del"
-        ? "bg-red-950/40"
-        : "";
-  const marker =
-    line.type === "add" ? "+" : line.type === "del" ? "−" : " ";
-  const markerColor =
-    line.type === "add"
-      ? "text-emerald-400"
-      : line.type === "del"
-        ? "text-red-400"
-        : "text-neutral-600";
-
-  const annotatedBg = annotated ? "ring-1 ring-inset ring-amber-500/30" : "";
+  const marker = line.type === "add" ? "+" : line.type === "del" ? "−" : " ";
   return (
-    <div className={`flex ${rowBg} ${annotatedBg}`}>
-      <LineNum n={line.oldNumber} />
-      <LineNum n={line.newNumber} />
-      <span className={`w-4 select-none text-center flex-none ${markerColor}`}>
-        {marker}
-      </span>
-      <pre className="flex-1 pl-1 pr-4 whitespace-pre overflow-x-auto">
+    <div className={`row ${line.type === "context" ? "ctx" : line.type} ${annotated ? "annotated" : ""}`}>
+      <span className="num">{line.oldNumber ?? ""}</span>
+      <span className="num">{line.newNumber ?? ""}</span>
+      <span className="marker">{marker}</span>
+      <pre className="line">
         {tokens ? (
           tokens.map((t, i) => (
             <span key={i} style={{ color: t.color }}>
@@ -218,18 +192,10 @@ function LineRow({
   );
 }
 
-function LineNum({ n }: { n: number | null }) {
-  return (
-    <span className="w-12 text-right pr-2 text-neutral-600 tabular-nums select-none flex-none">
-      {n ?? ""}
-    </span>
-  );
-}
-
 function tokenize(
   content: string,
   lang: BundledLanguage | "plaintext",
-  highlighter: Highlighter | null
+  highlighter: Highlighter | null,
 ): ThemedToken[] | null {
   if (!highlighter) return null;
   if (!content) return [];

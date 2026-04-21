@@ -37,10 +37,15 @@ export type FileStatus = "added" | "modified" | "deleted" | "renamed";
 
 export type FileView = "diff" | "content";
 
+export type Comment = {
+  author: string;
+  body: string;
+};
+
 export type Annotation = {
   lineStart: number;
   lineEnd: number;
-  note: string;
+  comments: Comment[];
 };
 
 export type PRFile = {
@@ -73,6 +78,8 @@ export type PRPayload = {
 export type FileDraft = {
   reviewed: boolean;
   note: string;
+  /** Per-annotation pending reply text. Key is the annotation's index in the file's annotations array. */
+  replies: Record<string, string>;
 };
 
 export type Draft = {
@@ -82,10 +89,9 @@ export type Draft = {
   updatedAt: string;
 };
 
-export type SubmitResult = {
-  ok: true;
-  url: string;
-} | {
-  ok: false;
-  error: string;
-};
+export type SubmitTarget = "github" | "agent";
+
+export type SubmitResult =
+  | { ok: true; target: "github"; url: string }
+  | { ok: true; target: "agent"; path: string }
+  | { ok: false; error: string };

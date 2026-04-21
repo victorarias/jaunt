@@ -1,5 +1,6 @@
 export type {
   Annotation,
+  Comment,
   Draft,
   DiffHunk,
   DiffLine,
@@ -12,5 +13,6 @@ export type {
   PRPayload,
   PRRef,
   SubmitResult,
+  SubmitTarget,
   TourMeta,
 } from "../../src/types.ts";

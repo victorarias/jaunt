@@ -5,8 +5,8 @@ type Props = {
   files: PRFile[];
   tour: TourMeta | null;
   draft: Draft;
-  selectedPath: string | null;
-  onSelect: (path: string) => void;
+  currentStop: number;
+  onJump: (stop: number) => void;
   overallBody: string;
   onOverallBodyChange: (body: string) => void;
 };
@@ -15,81 +15,101 @@ export function Sidebar({
   files,
   tour,
   draft,
-  selectedPath,
-  onSelect,
+  currentStop,
+  onJump,
   overallBody,
   onOverallBodyChange,
 }: Props) {
+  const reviewedCount = files.reduce(
+    (n, f) => n + (fileStateOf(draft, f.path).reviewed ? 1 : 0),
+    0,
+  );
+  const totalFiles = files.length || 1;
+  const pct = Math.round((100 * reviewedCount) / totalFiles);
+
   const grouped = groupByTour(files);
 
   return (
-    <aside className="w-80 border-r border-neutral-800 flex flex-col overflow-hidden">
-      <div className="p-3 border-b border-neutral-800">
-        <label className="text-xs uppercase tracking-wide text-neutral-500">
-          Overall review note
-        </label>
-        <textarea
-          value={overallBody}
-          onChange={(e) => onOverallBodyChange(e.target.value)}
-          rows={3}
-          placeholder="Summary shown at the top of the GitHub review…"
-          className="mt-1 w-full bg-neutral-900 text-sm rounded-md border border-neutral-800 px-2 py-1.5 focus:outline-none focus:border-neutral-600 resize-none font-sans"
-        />
+    <aside className="sidebar">
+      <div className="sidebar-head">
+        <span>
+          Tour · {reviewedCount}/{files.length} reviewed
+        </span>
+        <span style={{ color: "var(--fg-dimmer)" }}>{pct}%</span>
+      </div>
+      <div className="progress-track">
+        <div className="progress-fill" style={{ width: `${pct}%` }} />
       </div>
 
-      {tour && (tour.summary || tour.warnings.length > 0) && (
-        <div className="p-3 border-b border-neutral-800 space-y-2">
-          {tour.summary && (
-            <div className="text-xs text-neutral-400 whitespace-pre-wrap leading-relaxed">
-              {tour.summary}
-            </div>
-          )}
-          {tour.warnings.map((w, i) => (
-            <div
-              key={i}
-              className="text-[11px] text-amber-400/80 bg-amber-500/5 border border-amber-500/20 rounded px-2 py-1"
-            >
-              ⚠ {w}
-            </div>
-          ))}
-        </div>
+      {tour && tour.summary && (
+        <div className="tour-summary">{tour.summary}</div>
       )}
+      {tour?.warnings.map((w, i) => (
+        <div key={i} className="tour-warning">
+          ⚠ {w}
+        </div>
+      ))}
 
-      <div className="flex-1 overflow-auto text-sm">
+      <div className="file-list">
+        <button
+          type="button"
+          className={`file-item ${currentStop === 0 ? "active" : ""}`}
+          onClick={() => onJump(0)}
+        >
+          <span className="idx">00</span>
+          <div>
+            <div className="fname" style={{ color: "var(--fg-bright)" }}>
+              PR summary
+            </div>
+            <div className="fmeta">
+              <span>overview · review note</span>
+            </div>
+          </div>
+          <span />
+        </button>
+
         {grouped.tour.length > 0 && (
           <FileGroup
-            label={`Tour (${grouped.tour.length})`}
-            tone="tour"
+            label={`Tour · ${grouped.tour.length}`}
             files={grouped.tour}
             draft={draft}
-            selectedPath={selectedPath}
-            onSelect={onSelect}
+            currentStop={currentStop}
+            allFiles={files}
+            onJump={onJump}
           />
         )}
         {grouped.other.length > 0 && (
           <FileGroup
-            label={
-              grouped.tour.length + grouped.skip.length > 0
-                ? `Other files (${grouped.other.length})`
-                : `Files (${grouped.other.length})`
-            }
-            tone="other"
+            label={`Other · ${grouped.other.length}`}
             files={grouped.other}
             draft={draft}
-            selectedPath={selectedPath}
-            onSelect={onSelect}
+            currentStop={currentStop}
+            allFiles={files}
+            onJump={onJump}
           />
         )}
         {grouped.skip.length > 0 && (
           <FileGroup
-            label={`Skipped (${grouped.skip.length})`}
-            tone="skip"
+            label={`Skipped · ${grouped.skip.length}`}
             files={grouped.skip}
             draft={draft}
-            selectedPath={selectedPath}
-            onSelect={onSelect}
+            currentStop={currentStop}
+            allFiles={files}
+            onJump={onJump}
+            deemph
           />
         )}
+      </div>
+
+      <div className="overall-note">
+        <label htmlFor="overall-body">Overall review note</label>
+        <textarea
+          id="overall-body"
+          value={overallBody}
+          onChange={(e) => onOverallBodyChange(e.target.value)}
+          rows={3}
+          placeholder="Shown at the top of the GitHub review…"
+        />
       </div>
     </aside>
   );
@@ -97,71 +117,61 @@ export function Sidebar({
 
 function FileGroup({
   label,
-  tone,
   files,
   draft,
-  selectedPath,
-  onSelect,
+  currentStop,
+  allFiles,
+  onJump,
+  deemph = false,
 }: {
   label: string;
-  tone: "tour" | "other" | "skip";
   files: PRFile[];
   draft: Draft;
-  selectedPath: string | null;
-  onSelect: (path: string) => void;
+  currentStop: number;
+  allFiles: PRFile[];
+  onJump: (stop: number) => void;
+  deemph?: boolean;
 }) {
-  const dim = tone === "skip" ? "opacity-50" : "";
   return (
-    <div>
-      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-neutral-500 bg-neutral-900/40 sticky top-0">
-        {label}
-      </div>
-      <ul className={dim}>
-        {files.map((f, idx) => {
-          const { reviewed, note } = fileStateOf(draft, f.path);
-          const selected = f.path === selectedPath;
-          return (
-            <li key={f.path}>
-              <button
-                type="button"
-                onClick={() => onSelect(f.path)}
-                className={`w-full text-left px-3 py-1.5 flex items-center gap-2 border-l-2 transition-colors ${
-                  selected
-                    ? "bg-neutral-900 border-emerald-500"
-                    : "border-transparent hover:bg-neutral-900/50"
-                }`}
-              >
-                {tone === "tour" && (
-                  <span className="w-5 text-[10px] tabular-nums text-neutral-500 flex-none text-right">
-                    {idx + 1}.
+    <>
+      <div className="section-label">{label}</div>
+      {files.map((f) => {
+        const overallIdx = allFiles.indexOf(f);
+        const stopNum = overallIdx + 1;
+        const st = fileStateOf(draft, f.path);
+        const active = currentStop === stopNum;
+        const annCount = f.annotations.length;
+        return (
+          <button
+            type="button"
+            key={f.path}
+            className={`file-item ${active ? "active" : ""} ${deemph ? "deemph" : ""} ${st.reviewed ? "reviewed" : ""}`}
+            onClick={() => onJump(stopNum)}
+          >
+            <span className="idx">{String(stopNum).padStart(2, "0")}</span>
+            <div style={{ minWidth: 0 }}>
+              <div className="fname">{f.path}</div>
+              <div className="fmeta">
+                <span className="adds">+{f.additions}</span>
+                <span className="dels">−{f.deletions}</span>
+                {f.view === "content" && <span title="shown whole">◻ full</span>}
+                {annCount > 0 && (
+                  <span title={`${annCount} annotation${annCount === 1 ? "" : "s"}`}>
+                    ◔ {annCount}
                   </span>
                 )}
-                <span
-                  className={`w-4 h-4 rounded-full border flex-none ${
-                    reviewed
-                      ? "bg-emerald-500 border-emerald-500"
-                      : "border-neutral-600"
-                  }`}
-                  aria-label={reviewed ? "reviewed" : "unreviewed"}
-                />
-                <span className="flex-1 truncate font-mono text-xs">
-                  {f.path}
-                </span>
-                {note ? (
-                  <span className="text-[10px] text-amber-400" title="has note">
+                {st.note.trim() && (
+                  <span className="note-dot" title="has note">
                     ●
                   </span>
-                ) : null}
-                <span className="text-[10px] tabular-nums text-neutral-500 flex-none">
-                  <span className="text-green-400">+{f.additions}</span>{" "}
-                  <span className="text-red-400">−{f.deletions}</span>
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+                )}
+              </div>
+            </div>
+            <span />
+          </button>
+        );
+      })}
+    </>
   );
 }
 

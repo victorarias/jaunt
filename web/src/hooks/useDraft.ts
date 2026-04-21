@@ -85,6 +85,24 @@ export function useDraft(ref: PRRef | null) {
     [mutate]
   );
 
+  const setAnnotationReply = useCallback(
+    (path: string, annotationIdx: number, reply: string) =>
+      mutate((d) => {
+        const cur = fileStateOf(d, path);
+        const nextReplies = { ...cur.replies };
+        if (reply) nextReplies[String(annotationIdx)] = reply;
+        else delete nextReplies[String(annotationIdx)];
+        return {
+          ...d,
+          fileStates: {
+            ...d.fileStates,
+            [path]: { ...cur, replies: nextReplies },
+          },
+        };
+      }),
+    [mutate]
+  );
+
   const clearLocal = useCallback(() => {
     setDraft((d) => (d ? { ...d, overallBody: "", fileStates: {} } : d));
     latestDraft.current = draft
@@ -98,10 +116,16 @@ export function useDraft(ref: PRRef | null) {
     setOverallBody,
     toggleReviewed,
     setFileNote,
+    setAnnotationReply,
     clearLocal,
   };
 }
 
 export function fileStateOf(draft: Draft, path: string): FileDraft {
-  return draft.fileStates[path] ?? { reviewed: false, note: "" };
+  const existing = draft.fileStates[path];
+  return {
+    reviewed: existing?.reviewed ?? false,
+    note: existing?.note ?? "",
+    replies: existing?.replies ?? {},
+  };
 }

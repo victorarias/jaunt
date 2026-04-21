@@ -1,4 +1,4 @@
-import type { Draft, PRPayload, SubmitResult } from "./types.ts";
+import type { Draft, PRPayload, SubmitResult, SubmitTarget } from "./types.ts";
 
 export async function fetchPR(): Promise<PRPayload> {
   const resp = await fetch("/api/pr");
@@ -22,11 +22,14 @@ export async function saveDraft(draft: Draft): Promise<Draft> {
   return resp.json();
 }
 
-export async function submitReview(body: string): Promise<SubmitResult> {
+export async function submitReview(
+  body: string,
+  target: SubmitTarget,
+): Promise<SubmitResult> {
   const resp = await fetch("/api/submit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({ body, target }),
   });
   return resp.json();
 }

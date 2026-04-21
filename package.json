@@ -8,7 +8,13 @@
   },
   "scripts": {
     "start": "bun run src/cli.ts",
-    "typecheck": "tsc --noEmit"
+    "link": "bun link",
+    "unlink": "bun unlink",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:unit": "bun test test/*.test.ts",
+    "test:ui": "bun test test/browser/",
+    "check": "bun run typecheck && bun run test:unit"
   },
   "dependencies": {
     "react": "^19.2.5",
@@ -22,6 +28,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "playwright": "^1.59.1",
     "tailwindcss": "^4.2.3",
     "vite": "^8.0.9"
   },

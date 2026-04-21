@@ -6,26 +6,31 @@ import {
   resolveLang,
   type Highlighter,
 } from "../hooks/useHighlighter.ts";
+import { Thread } from "./Thread.tsx";
 
 type Props = {
   file: PRFile;
   highlighter: Highlighter | null;
+  replies: Record<string, string>;
+  onSetReply: (annotationIdx: number, text: string) => void;
 };
 
-type LineAnnotation = {
-  index: number;
-  annotation: Annotation;
-};
+type LineAnnotation = { index: number; annotation: Annotation };
 
-export function ContentView({ file, highlighter }: Props) {
+export function ContentView({
+  file,
+  highlighter,
+  replies,
+  onSetReply,
+}: Props) {
   const lang = resolveLang(file.language);
 
   const lines = useMemo(
     () => (file.content ?? "").split("\n"),
-    [file.content]
+    [file.content],
   );
 
-  // Rendered below the start line so the reader sees the note in-context.
+  // Render each annotation below its start line.
   const annotationsByStart = useMemo(() => {
     const m = new Map<number, LineAnnotation[]>();
     file.annotations.forEach((a, i) => {
@@ -46,17 +51,26 @@ export function ContentView({ file, highlighter }: Props) {
 
   if (file.content === null) {
     return (
-      <div className="p-8 text-sm text-neutral-500 italic">
+      <div
+        style={{
+          padding: "32px 24px",
+          color: "var(--fg-dimmer)",
+          fontSize: 13,
+          fontStyle: "italic",
+          fontFamily: "var(--sans)",
+        }}
+      >
         No content available for this file.
       </div>
     );
   }
 
   return (
-    <div className="font-mono text-[12.5px] leading-5">
+    <div className="code full">
       {lines.map((content, i) => {
         const lineNum = i + 1;
         const hits = annotationsByStart.get(lineNum);
+        const annotated = annotatedLines.has(lineNum);
         return (
           <div key={i}>
             <ContentLine
@@ -64,16 +78,17 @@ export function ContentView({ file, highlighter }: Props) {
               content={content}
               lang={lang}
               highlighter={highlighter}
-              annotated={annotatedLines.has(lineNum)}
+              annotated={annotated}
             />
-            {hits &&
-              hits.map(({ index, annotation }) => (
-                <AnnotationBlock
-                  key={`${lineNum}-${index}`}
-                  index={index}
-                  annotation={annotation}
-                />
-              ))}
+            {hits?.map(({ index, annotation }) => (
+              <Thread
+                key={`${lineNum}-${index}`}
+                annotation={annotation}
+                index={index}
+                reply={replies[String(index)] ?? ""}
+                onReplyChange={onSetReply}
+              />
+            ))}
           </div>
         );
       })}
@@ -96,25 +111,18 @@ function ContentLine({
 }) {
   const tokens = useMemo(
     () => tokenize(content, lang, highlighter),
-    [content, lang, highlighter]
+    [content, lang, highlighter],
   );
 
   return (
     <div
       id={`line-${lineNum}`}
-      className={`flex ${annotated ? "bg-amber-500/5" : ""}`}
+      className={`row ctx ${annotated ? "annotated" : ""}`}
     >
-      <span className="w-12 text-right pr-2 text-neutral-600 tabular-nums select-none flex-none">
-        {lineNum}
-      </span>
-      <span
-        className={`w-4 select-none text-center flex-none ${
-          annotated ? "text-amber-400" : "text-neutral-700"
-        }`}
-      >
-        {annotated ? "▸" : ""}
-      </span>
-      <pre className="flex-1 pl-1 pr-4 whitespace-pre overflow-x-auto">
+      <span className="num" />
+      <span className="num">{lineNum}</span>
+      <span className="marker">{annotated ? "▸" : " "}</span>
+      <pre className="line">
         {tokens ? (
           tokens.map((t, i) => (
             <span key={i} style={{ color: t.color }}>
@@ -129,31 +137,10 @@ function ContentLine({
   );
 }
 
-function AnnotationBlock({
-  index,
-  annotation,
-}: {
-  index: number;
-  annotation: Annotation;
-}) {
-  const range =
-    annotation.lineStart === annotation.lineEnd
-      ? `line ${annotation.lineStart}`
-      : `lines ${annotation.lineStart}–${annotation.lineEnd}`;
-  return (
-    <div className="ml-16 my-1.5 mr-4 bg-amber-500/10 border-l-2 border-amber-500/60 rounded-r px-3 py-2 text-[13px] text-amber-100/90 whitespace-pre-wrap leading-relaxed font-sans">
-      <div className="text-[10px] uppercase tracking-wide text-amber-400/80 mb-0.5">
-        Annotation {index + 1} · {range}
-      </div>
-      {annotation.note}
-    </div>
-  );
-}
-
 function tokenize(
   content: string,
   lang: BundledLanguage | "plaintext",
-  highlighter: Highlighter | null
+  highlighter: Highlighter | null,
 ): ThemedToken[] | null {
   if (!highlighter) return null;
   if (!content) return [];

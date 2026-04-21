@@ -1,49 +1,33 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
-import { fetchFileContent, fetchPR, submitReviewComment } from "./gh.ts";
-import { clearDraft, loadDraft, saveDraft } from "./drafts.ts";
-import { applyTour, type Tour } from "./tour.ts";
-import type { Draft, PRPayload, PRRef, SubmitResult } from "./types.ts";
+import { createApiHandlers, type ApiDeps } from "./api-handlers.ts";
+import type { Tour } from "./tour.ts";
+import type { Draft, PRRef, SubmitTarget } from "./types.ts";
 
-export function apiPlugin(opts: { ref: PRRef; tour: Tour | null }): Plugin {
-  let cachedPR: PRPayload | null = null;
+export function apiPlugin(opts: {
+  ref: PRRef;
+  tour: Tour | null;
+  deps: ApiDeps;
+}): Plugin {
+  const handlers = createApiHandlers(opts);
 
   return {
     name: "pr-tour-api",
     configureServer(server) {
       server.middlewares.use("/api/pr", async (_req, res) => {
-        await respondJSON(res, async () => {
-          if (!cachedPR) {
-            const fetched = await fetchPR(opts.ref);
-            if (opts.tour) {
-              const contentCache = new Map<string, Promise<string | null>>();
-              const loadContent = (path: string): Promise<string | null> => {
-                let p = contentCache.get(path);
-                if (!p) {
-                  p = fetchFileContent(opts.ref, fetched.meta.headSha, path);
-                  contentCache.set(path, p);
-                }
-                return p;
-              };
-              cachedPR = await applyTour(fetched, opts.tour, loadContent);
-            } else {
-              cachedPR = fetched;
-            }
-          }
-          return cachedPR;
-        });
+        await respondJSON(res, () => handlers.getPR());
       });
 
       server.middlewares.use("/api/draft", async (req, res) => {
         if (req.method === "GET") {
-          await respondJSON(res, () => loadDraft(opts.ref));
+          await respondJSON(res, () => handlers.getDraft());
           return;
         }
         if (req.method === "PUT" || req.method === "POST") {
           await respondJSON(res, async () => {
             const body = await readBody(req);
             const draft = JSON.parse(body) as Draft;
-            return saveDraft(draft);
+            return handlers.putDraft(draft);
           });
           return;
         }
@@ -57,16 +41,13 @@ export function apiPlugin(opts: { ref: PRRef; tour: Tour | null }): Plugin {
           res.end();
           return;
         }
-        await respondJSON<SubmitResult>(res, async () => {
+        await respondJSON(res, async () => {
           const body = await readBody(req);
-          const { body: reviewBody } = JSON.parse(body) as { body: string };
-          try {
-            const url = await submitReviewComment(opts.ref, reviewBody);
-            await clearDraft(opts.ref);
-            return { ok: true, url };
-          } catch (err) {
-            return { ok: false, error: messageOf(err) };
-          }
+          const { body: reviewBody, target } = JSON.parse(body) as {
+            body: string;
+            target?: SubmitTarget;
+          };
+          return handlers.submit(reviewBody, target ?? "github");
         });
       });
     },
@@ -84,7 +65,11 @@ async function respondJSON<T>(
   } catch (err) {
     res.statusCode = 500;
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ error: messageOf(err) }));
+    res.end(
+      JSON.stringify({
+        error: err instanceof Error ? err.message : String(err),
+      })
+    );
   }
 }
 
@@ -94,9 +79,4 @@ async function readBody(req: IncomingMessage): Promise<string> {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   return Buffer.concat(chunks).toString("utf-8");
-}
-
-function messageOf(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
 }

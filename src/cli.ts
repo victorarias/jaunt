@@ -1,11 +1,19 @@
 #!/usr/bin/env bun
-import { createServer } from "vite";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
+import { copyFile, mkdir, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
-import { getCurrentRepo, parsePRRef } from "./gh.ts";
-import { apiPlugin } from "./vite-api-plugin.ts";
+import {
+  fetchFileContent,
+  fetchPR,
+  getCurrentRepo,
+  parsePRRef,
+  submitReviewComment,
+} from "./gh.ts";
+import { clearDraft, loadDraft, saveDraft } from "./drafts.ts";
+import { writeFeedback } from "./feedback.ts";
+import type { ApiDeps } from "./api-handlers.ts";
+import { startServer } from "./server.ts";
 import { loadTour, resolveTourPath, type Tour } from "./tour.ts";
 
 type ParsedArgs = {
@@ -16,7 +24,14 @@ type ParsedArgs = {
 };
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  const raw = process.argv.slice(2);
+
+  if (raw[0] === "install-skill") {
+    await installSkill(raw.slice(1));
+    return;
+  }
+
+  const args = parseArgs(raw);
   const host = args.host;
 
   if (!args.prRef) {
@@ -63,25 +78,24 @@ async function main() {
     console.log(`\x1b[2m  tour:\x1b[0m ${tourSource}`);
   }
 
-  const here = dirname(fileURLToPath(import.meta.url));
-  const webRoot = join(here, "..", "web");
+  const deps: ApiDeps = {
+    fetchPR,
+    fetchFileContent,
+    submitReviewComment,
+    writeFeedback,
+    loadDraft,
+    saveDraft,
+    clearDraft,
+  };
 
-  const server = await createServer({
-    root: webRoot,
-    configFile: false,
-    plugins: [react(), tailwindcss(), apiPlugin({ ref, tour })],
-    server: {
-      port: 0,
-      strictPort: false,
-      open: !process.env.PR_TOUR_NO_OPEN && !host,
-      host: host ? true : undefined,
-      allowedHosts: host ? true : undefined,
-    },
-    clearScreen: false,
+  const handle = await startServer({
+    ref,
+    tour,
+    deps,
+    open: !process.env.PR_TOUR_NO_OPEN && !host,
+    host,
   });
-
-  await server.listen();
-  server.printUrls();
+  handle.viteServer.printUrls();
   console.log("\x1b[2m(Ctrl-C to stop)\x1b[0m");
 }
 
@@ -125,6 +139,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 function printUsage() {
   console.log(
     "usage: pr-tour <pr-ref> [--guide <path>] [--no-guide] [--host]\n" +
+      "       pr-tour install-skill [--force]\n" +
       "\n" +
       "  <pr-ref> is one of:\n" +
       "    349                            (number; uses current gh repo)\n" +
@@ -138,7 +153,61 @@ function printUsage() {
       "    --no-guide       ignore any tour file, show files alphabetically\n" +
       "\n" +
       "  network:\n" +
-      "    --host           bind to all interfaces (for remote-dev access)"
+      "    --host           bind to all interfaces (for remote-dev access)\n" +
+      "\n" +
+      "  install-skill:\n" +
+      "    copies skill/SKILL.md → ~/.claude/skills/pr-tour/SKILL.md\n" +
+      "    so Claude Code picks up the /pr-tour skill.\n" +
+      "    --force          overwrite an existing installation"
+  );
+}
+
+async function installSkill(args: string[]) {
+  const force = args.includes("--force") || args.includes("-f");
+  if (args.some((a) => a !== "--force" && a !== "-f")) {
+    console.error(
+      "pr-tour install-skill: unexpected argument(s): " +
+        args.filter((a) => a !== "--force" && a !== "-f").join(" "),
+    );
+    process.exit(1);
+  }
+
+  const here = dirname(fileURLToPath(import.meta.url));
+  const src = resolve(here, "..", "skill", "SKILL.md");
+  const destDir = join(homedir(), ".claude", "skills", "pr-tour");
+  const dest = join(destDir, "SKILL.md");
+
+  try {
+    await stat(src);
+  } catch {
+    console.error(`pr-tour install-skill: source not found at ${src}`);
+    process.exit(1);
+  }
+
+  let existed = false;
+  try {
+    await stat(dest);
+    existed = true;
+  } catch {
+    // absent — will install fresh
+  }
+
+  if (existed && !force) {
+    console.error(
+      `pr-tour install-skill: ${dest} already exists.\n` +
+        `  re-run with --force to overwrite.`,
+    );
+    process.exit(1);
+  }
+
+  await mkdir(destDir, { recursive: true });
+  await copyFile(src, dest);
+
+  const verb = existed ? "updated" : "installed";
+  console.log(`pr-tour: ${verb} skill → ${dest}`);
+  console.log(
+    "  Claude Code will pick it up on the next session.\n" +
+      "  Use it by asking for a PR tour, or type /pr-tour.",
   );
 }
 

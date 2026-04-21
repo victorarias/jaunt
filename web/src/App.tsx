@@ -1,11 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchPR, submitReview } from "./api.ts";
-import type { PRPayload } from "./types.ts";
-import { useDraft, fileStateOf } from "./hooks/useDraft.ts";
+import type { PRFile, PRPayload, PRRef, SubmitTarget } from "./types.ts";
+import { composeReviewBody, type Verdict } from "../../src/compose.ts";
+import { fileStateOf, useDraft } from "./hooks/useDraft.ts";
 import { useHighlighter } from "./hooks/useHighlighter.ts";
 import { TopBar } from "./components/TopBar.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
-import { MainPanel } from "./components/MainPanel.tsx";
+import { SummaryCard } from "./components/SummaryCard.tsx";
+import { FileCard } from "./components/FileCard.tsx";
+import { DriveBar } from "./components/DriveBar.tsx";
+import {
+  SubmitDialog,
+  type SubmitOutcome,
+} from "./components/SubmitDialog.tsx";
 
 type LoadState =
   | { kind: "loading" }
@@ -34,21 +41,20 @@ export function App() {
   }, []);
 
   if (state.kind === "loading") {
-    return (
-      <div className="h-full flex items-center justify-center text-neutral-400">
-        Loading PR…
-      </div>
-    );
+    return <div className="status-msg">Loading PR…</div>;
   }
   if (state.kind === "error") {
-    return (
-      <div className="h-full flex items-center justify-center text-red-400 font-mono text-sm">
-        {state.message}
-      </div>
-    );
+    return <div className="status-msg error">{state.message}</div>;
   }
-
   return <Review pr={state.pr} />;
+}
+
+function stopStorageKey(ref: PRRef) {
+  return `pr-tour:stop:${ref.owner}/${ref.repo}#${ref.number}`;
+}
+
+function clamp(n: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, n));
 }
 
 function Review({ pr }: { pr: PRPayload }) {
@@ -59,115 +65,227 @@ function Review({ pr }: { pr: PRPayload }) {
     setOverallBody,
     toggleReviewed,
     setFileNote,
+    setAnnotationReply,
     clearLocal,
   } = useDraft(pr.meta.ref);
 
-  const [selectedPath, setSelectedPath] = useState<string | null>(
-    pr.files[0]?.path ?? null
-  );
-  const [submitting, setSubmitting] = useState(false);
+  const files = pr.files;
+  const totalStops = files.length + 1;
 
-  const selectedFile = useMemo(
-    () => pr.files.find((f) => f.path === selectedPath) ?? null,
-    [pr.files, selectedPath]
+  const stopKey = stopStorageKey(pr.meta.ref);
+  const [currentStop, setCurrentStop] = useState<number>(() => {
+    const raw = window.localStorage.getItem(stopKey);
+    const n = raw == null ? 0 : parseInt(raw, 10);
+    return Number.isFinite(n) ? clamp(n, 0, Math.max(0, totalStops - 1)) : 0;
+  });
+  const [submitOpen, setSubmitOpen] = useState(false);
+  const [reviewSubmitted, setReviewSubmitted] = useState(false);
+
+  useEffect(() => {
+    window.localStorage.setItem(stopKey, String(currentStop));
+  }, [currentStop, stopKey]);
+
+  const mainRef = useRef<HTMLDivElement>(null);
+
+  const scrollToStop = useCallback((stop: number) => {
+    const id = `stop-${stop}`;
+    requestAnimationFrame(() => {
+      const el = document.getElementById(id);
+      const scroller = mainRef.current;
+      if (el && scroller) {
+        const top =
+          el.getBoundingClientRect().top -
+          scroller.getBoundingClientRect().top +
+          scroller.scrollTop -
+          12;
+        scroller.scrollTo({ top, behavior: "smooth" });
+      }
+    });
+  }, []);
+
+  const jumpTo = useCallback(
+    (stop: number) => {
+      const next = clamp(stop, 0, totalStops - 1);
+      setCurrentStop(next);
+      scrollToStop(next);
+    },
+    [scrollToStop, totalStops],
   );
+
+  const next = useCallback(() => {
+    if (currentStop < totalStops - 1) {
+      // Mark the current file reviewed as we leave it.
+      if (currentStop > 0 && draft) {
+        const f = files[currentStop - 1];
+        if (f && !fileStateOf(draft, f.path).reviewed) {
+          toggleReviewed(f.path);
+        }
+      }
+      jumpTo(currentStop + 1);
+    }
+  }, [currentStop, totalStops, files, draft, toggleReviewed, jumpTo]);
+
+  const prev = useCallback(() => {
+    if (currentStop > 0) jumpTo(currentStop - 1);
+  }, [currentStop, jumpTo]);
+
+  const currentFile: PRFile | null =
+    currentStop > 0 ? (files[currentStop - 1] ?? null) : null;
+
+  const toggleCurrentReviewed = useCallback(() => {
+    if (currentFile) toggleReviewed(currentFile.path);
+  }, [currentFile, toggleReviewed]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (submitOpen) return;
+      const tgt = e.target as HTMLElement | null;
+      if (
+        tgt &&
+        (tgt.tagName === "INPUT" ||
+          tgt.tagName === "TEXTAREA" ||
+          tgt.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "j" || e.key === "ArrowRight") {
+        e.preventDefault();
+        next();
+      } else if (e.key === "k" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        prev();
+      } else if (e.key === "r" && currentFile) {
+        e.preventDefault();
+        toggleCurrentReviewed();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [next, prev, currentFile, toggleCurrentReviewed, submitOpen]);
 
   const reviewedCount = useMemo(() => {
     if (!draft) return 0;
-    return pr.files.reduce(
-      (acc, f) => acc + (fileStateOf(draft, f.path).reviewed ? 1 : 0),
-      0
+    return files.reduce(
+      (n, f) => n + (fileStateOf(draft, f.path).reviewed ? 1 : 0),
+      0,
     );
-  }, [draft, pr.files]);
+  }, [draft, files]);
 
-  async function handleSubmit() {
-    if (!draft) return;
-    if (
-      !confirm(
-        "Push this review to GitHub? This will post a review comment with your overall note and per-file notes, then clear the local draft."
-      )
-    ) {
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const body = composeReviewBody(draft, pr);
-      const result = await submitReview(body);
-      if (result.ok) {
-        clearLocal();
-        alert(`Pushed to GitHub → ${result.url}`);
-      } else {
-        alert(`Submit failed: ${result.error}`);
-      }
-    } finally {
-      setSubmitting(false);
-    }
+  async function handleSubmit(
+    verdict: Verdict,
+    body: string,
+    target: SubmitTarget,
+  ): Promise<SubmitOutcome> {
+    if (!draft) throw new Error("Draft not loaded");
+    const composed = composeReviewBody(verdict, body, draft, files);
+    const result = await submitReview(composed, target);
+    if (!result.ok) throw new Error(result.error);
+    setReviewSubmitted(true);
+    clearLocal();
+    return result.target === "github"
+      ? { target: "github", url: result.url }
+      : { target: "agent", path: result.path };
   }
 
   if (!draft) {
-    return (
-      <div className="h-full flex items-center justify-center text-neutral-400">
-        Loading draft…
-      </div>
-    );
+    return <div className="status-msg">Loading draft…</div>;
   }
 
+  const stopLabel =
+    currentStop === 0
+      ? "PR summary"
+      : (files[currentStop - 1]?.path ?? "—");
+  const currentReviewed = currentFile
+    ? fileStateOf(draft, currentFile.path).reviewed
+    : false;
+
   return (
-    <div className="h-full flex flex-col">
+    <div className="app">
       <TopBar
         meta={pr.meta}
         reviewedCount={reviewedCount}
-        totalCount={pr.files.length}
+        totalCount={files.length}
         saveStatus={status}
-        submitting={submitting}
-        onSubmit={handleSubmit}
       />
-      <div className="flex-1 flex overflow-hidden">
-        <Sidebar
-          files={pr.files}
-          tour={pr.tour}
-          draft={draft}
-          selectedPath={selectedPath}
-          onSelect={setSelectedPath}
-          overallBody={draft.overallBody}
-          onOverallBodyChange={setOverallBody}
-        />
-        {selectedFile ? (
-          <MainPanel
-            file={selectedFile}
-            draft={draft}
-            highlighter={highlighter}
-            onToggleReviewed={toggleReviewed}
-            onNoteChange={setFileNote}
-          />
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-neutral-500">
-            Select a file from the sidebar to start.
-          </div>
-        )}
+
+      <Sidebar
+        files={files}
+        tour={pr.tour}
+        draft={draft}
+        currentStop={currentStop}
+        onJump={jumpTo}
+        overallBody={draft.overallBody}
+        onOverallBodyChange={setOverallBody}
+      />
+
+      <main className="main" ref={mainRef}>
+        <div className="main-inner">
+          <SummaryCard meta={pr.meta} files={files} tour={pr.tour} />
+          {files.map((f, i) => (
+            <FileCard
+              key={f.path}
+              file={f}
+              stopNum={i + 1}
+              draft={draft}
+              highlighter={highlighter}
+              isActive={currentStop === i + 1}
+              onToggleReviewed={toggleReviewed}
+              onNoteChange={setFileNote}
+              onSetReply={setAnnotationReply}
+            />
+          ))}
+          {files.length > 0 && (
+            <div
+              style={{
+                padding: "32px 4px",
+                color: "var(--fg-dimmer)",
+                fontSize: 12,
+                textAlign: "center",
+              }}
+            >
+              — end of tour —{" "}
+              <span style={{ color: "var(--accent)" }}>
+                {reviewedCount === files.length
+                  ? `all ${files.length} files walked`
+                  : `${reviewedCount}/${files.length} files walked`}
+              </span>
+            </div>
+          )}
+        </div>
+      </main>
+
+      <DriveBar
+        currentStop={currentStop}
+        totalStops={totalStops}
+        stopLabel={stopLabel}
+        canMarkReviewed={!!currentFile}
+        currentReviewed={currentReviewed}
+        reviewedCount={reviewedCount}
+        totalFiles={files.length}
+        reviewSubmitted={reviewSubmitted}
+        onPrev={prev}
+        onNext={next}
+        onToggleReviewed={toggleCurrentReviewed}
+        onOpenSubmit={() => setSubmitOpen(true)}
+      />
+
+      <div className="kbd-help">
+        <span className="kbd">J</span>/<span className="kbd">→</span> next ·
+        <span className="kbd">K</span>/<span className="kbd">←</span> prev ·
+        <span className="kbd">R</span> reviewed
       </div>
+
+      {submitOpen && (
+        <SubmitDialog
+          files={files}
+          draft={draft}
+          onClose={() => setSubmitOpen(false)}
+          onSubmit={handleSubmit}
+        />
+      )}
     </div>
   );
 }
 
-function composeReviewBody(
-  draft: { overallBody: string; fileStates: Record<string, { note: string }> },
-  pr: PRPayload
-): string {
-  const parts: string[] = [];
-  if (draft.overallBody.trim()) parts.push(draft.overallBody.trim());
-
-  const perFile: string[] = [];
-  for (const f of pr.files) {
-    const st = draft.fileStates[f.path];
-    if (st?.note.trim()) {
-      perFile.push(`**${f.path}**\n\n${st.note.trim()}`);
-    }
-  }
-  if (perFile.length > 0) {
-    parts.push("---\n\n### Notes by file\n\n" + perFile.join("\n\n"));
-  }
-
-  if (parts.length === 0) return "_(review submitted with no notes)_";
-  return parts.join("\n\n");
-}

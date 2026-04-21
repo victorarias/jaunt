@@ -1,12 +1,19 @@
 import { readFile, stat } from "node:fs/promises";
 import { join, isAbsolute, resolve } from "node:path";
 import { parse as parseYAML } from "yaml";
-import type { Annotation, FileView, PRFile, PRPayload, TourMeta } from "./types.ts";
+import type {
+  Annotation,
+  Comment,
+  FileView,
+  PRFile,
+  PRPayload,
+  TourMeta,
+} from "./types.ts";
 
 export type TourAnnotation =
-  | { kind: "anchor"; anchor: string; note: string }
-  | { kind: "line"; line: number; note: string }
-  | { kind: "range"; start: number; end: number; note: string };
+  | { kind: "anchor"; anchor: string; comments: Comment[] }
+  | { kind: "line"; line: number; comments: Comment[] }
+  | { kind: "range"; start: number; end: number; comments: Comment[] };
 
 export type TourFileEntry = {
   path: string;
@@ -121,12 +128,7 @@ function parseAnnotations(
         `tour file ${sourcePath}: each annotation on "${path}" must be a mapping`
       );
     }
-    const note = typeof entry.note === "string" ? entry.note.trim() : "";
-    if (!note) {
-      throw new Error(
-        `tour file ${sourcePath}: annotation on "${path}" is missing a note`
-      );
-    }
+    const comments = parseComments(entry, path, sourcePath);
     const hasAnchor = typeof entry.anchor === "string";
     const hasLine = typeof entry.line === "number";
     const hasRange = typeof entry.start === "number" && typeof entry.end === "number";
@@ -137,7 +139,7 @@ function parseAnnotations(
       );
     }
     if (hasAnchor) {
-      out.push({ kind: "anchor", anchor: (entry.anchor as string), note });
+      out.push({ kind: "anchor", anchor: (entry.anchor as string), comments });
     } else if (hasLine) {
       const line = entry.line as number;
       if (!Number.isInteger(line) || line < 1) {
@@ -145,7 +147,7 @@ function parseAnnotations(
           `tour file ${sourcePath}: annotation on "${path}" has invalid line ${line}`
         );
       }
-      out.push({ kind: "line", line, note });
+      out.push({ kind: "line", line, comments });
     } else {
       const start = entry.start as number;
       const end = entry.end as number;
@@ -154,10 +156,78 @@ function parseAnnotations(
           `tour file ${sourcePath}: annotation on "${path}" has invalid start/end (${start}..${end})`
         );
       }
-      out.push({ kind: "range", start, end, note });
+      out.push({ kind: "range", start, end, comments });
     }
   }
   return out;
+}
+
+function parseComments(
+  entry: Record<string, unknown>,
+  path: string,
+  sourcePath: string
+): Comment[] {
+  const hasNote = typeof entry.note === "string";
+  const hasThread = Array.isArray(entry.thread);
+  if (hasNote && hasThread) {
+    throw new Error(
+      `tour file ${sourcePath}: annotation on "${path}" cannot have both "note" and "thread"`
+    );
+  }
+  if (!hasNote && !hasThread) {
+    throw new Error(
+      `tour file ${sourcePath}: annotation on "${path}" must have a "note" or a "thread"`
+    );
+  }
+
+  if (hasNote) {
+    const body = (entry.note as string).trim();
+    if (!body) {
+      throw new Error(
+        `tour file ${sourcePath}: annotation on "${path}" has an empty "note"`
+      );
+    }
+    return [{ author: "agent", body }];
+  }
+
+  const thread = entry.thread as unknown[];
+  if (thread.length === 0) {
+    throw new Error(
+      `tour file ${sourcePath}: annotation on "${path}" has an empty "thread"`
+    );
+  }
+
+  const comments: Comment[] = [];
+  for (let i = 0; i < thread.length; i++) {
+    const c = thread[i];
+    if (typeof c === "string") {
+      const body = c.trim();
+      if (!body) {
+        throw new Error(
+          `tour file ${sourcePath}: thread entry ${i} on "${path}" is empty`
+        );
+      }
+      comments.push({ author: "agent", body });
+      continue;
+    }
+    if (!isRecord(c)) {
+      throw new Error(
+        `tour file ${sourcePath}: thread entry ${i} on "${path}" must be a string or { author, body } mapping`
+      );
+    }
+    const body = typeof c.body === "string" ? c.body.trim() : "";
+    if (!body) {
+      throw new Error(
+        `tour file ${sourcePath}: thread entry ${i} on "${path}" is missing "body"`
+      );
+    }
+    const author =
+      typeof c.author === "string" && c.author.trim()
+        ? c.author.trim()
+        : "agent";
+    comments.push({ author, body });
+  }
+  return comments;
 }
 
 export type ContentLoader = (path: string) => Promise<string | null>;
@@ -276,7 +346,7 @@ function resolveAnnotations(
         );
         continue;
       }
-      out.push({ lineStart: idx + 1, lineEnd: idx + 1, note: a.note });
+      out.push({ lineStart: idx + 1, lineEnd: idx + 1, comments: a.comments });
     } else if (a.kind === "line") {
       if (lines && a.line > lines.length) {
         warnings.push(
@@ -284,7 +354,7 @@ function resolveAnnotations(
         );
         continue;
       }
-      out.push({ lineStart: a.line, lineEnd: a.line, note: a.note });
+      out.push({ lineStart: a.line, lineEnd: a.line, comments: a.comments });
     } else {
       if (lines && a.end > lines.length) {
         warnings.push(
@@ -292,7 +362,7 @@ function resolveAnnotations(
         );
         continue;
       }
-      out.push({ lineStart: a.start, lineEnd: a.end, note: a.note });
+      out.push({ lineStart: a.start, lineEnd: a.end, comments: a.comments });
     }
   }
   return out;
