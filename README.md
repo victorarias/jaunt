@@ -54,12 +54,21 @@ Notes autosave to `~/.pr-tour/<owner>_<repo>_<num>.json` (400ms debounce).
 
 ```
 pr-tour <pr-ref> [--guide <path>] [--no-guide]
+pr-tour validate [path] [--pr <ref>] [--offline]
+pr-tour install-skill [--force]
 ```
+
+**`<pr-ref>`** — one of:
 
 - `349` — number; uses the current `gh` repo
 - `owner/repo#349`
 - `owner/repo/349`
 - `https://github.com/owner/repo/pull/349`
+
+**`pr-tour validate`** — parse a `.pr-tour-guide.yml` with the same loader the
+app uses and check paths + anchors + line ranges against the live PR. Exits
+non-zero on errors. Ambiguous anchors, unfetchable files, and short anchors
+surface as warnings. Use `--offline` for schema-only checks (no `gh` calls).
 
 ## Tour guide format
 

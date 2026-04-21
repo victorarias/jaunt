@@ -213,22 +213,34 @@ Three to five lines. Tell the reviewer:
 - **The reading strategy** in shorthand ("Read domain-outward: plan → aggregate → ports → service → persistence → realtime → synthesis → wiring → tests.")
 - Anything that would surprise them ("Generated files are at the bottom under Skipped.")
 
-### 7. Check against reality
-
-Before writing, verify:
-- Every `path` in `files` and `skip` actually appears in the PR file list. A path that doesn't match becomes a sidebar warning. Not the end of the world — but avoidable.
-- Every `anchor:` resolves to the line you intend. The app pins to the first substring match; a wrong-line anchor fails silently. If you have the post-PR file content available, confirm the first match is correct. If not, bias toward longer, more specific anchors.
-
-### 8. Write the file
+### 7. Write the file
 
 Write `.pr-tour-guide.yml` in the cwd (not in the pr-tour app directory; the reviewer runs pr-tour from the PR's repo or wherever they prefer). Do not overwrite a non-empty existing `.pr-tour-guide.yml` without asking.
+
+### 8. Validate
+
+After writing, run:
+
+```bash
+pr-tour validate
+```
+
+Useful variants: `pr-tour validate --offline` (schema-only — no `gh` calls) and `pr-tour validate --pr <ref>` (check against a specific PR instead of the current branch's).
+
+It parses the YAML with the same loader the app uses, then reports:
+
+- **Errors** (exit non-zero) — schema problems, paths in `files` not in the PR, anchors that don't resolve, `line:` / `end:` past end of file, a path listed in both `files` and `skip`, duplicate `files` entries. Fix and re-run until `validate` is clean.
+- **Warnings** — ambiguous anchors (first substring match wins; lengthen if that's not what you want), `skip:` entries not in the PR, very short anchors, `view: content` on files the app can't fetch. Act on these unless you have a specific reason not to.
+
+**Do not improvise your own YAML validation** (no `python -c "import yaml..."`, no inline scripts, no eyeballing the file yourself). `pr-tour validate` is the contract — it catches everything the app will silently misinterpret, and it's the one source of truth. If `pr-tour` isn't on `$PATH`, run `cd ~/projects/pr-tour && bun run src/cli.ts validate [guide-path]` from the target repo's directory (pass the guide path explicitly since cwd will be the pr-tour repo).
 
 ### 9. Report
 
 Tell the user:
 - The file you wrote and where
 - Count of tour / other / skip entries
-- The command to launch the review: `cd ~/projects/pr-tour && bun run start <pr-ref>`
+- The `pr-tour validate` result (clean / N warnings)
+- The command to launch the review: `pr-tour <pr-ref>` (or `cd ~/projects/pr-tour && bun run start <pr-ref>` if not globally installed)
 
 ## Edge cases
 
@@ -245,5 +257,6 @@ Tell the user:
 - Write a 20-line note on a 5-line change.
 - Skip reading the diff on a fresh session just because the file list looks familiar. File names ≠ content.
 - Pick ambiguous anchors and hope the first match is right. Verify, or lengthen.
+- Write your own YAML validator. Use `pr-tour validate` — it catches exactly what the app would silently misinterpret.
 - Overwrite an existing `.pr-tour-guide.yml` that has substantial content without asking.
 - Post the guide to GitHub — this skill is local-file only. (Posting to a pinned PR comment is a future feature.)

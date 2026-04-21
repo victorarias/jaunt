@@ -15,6 +15,7 @@ import { writeFeedback } from "./feedback.ts";
 import type { ApiDeps } from "./api-handlers.ts";
 import { startServer } from "./server.ts";
 import { loadTour, resolveTourPath, type Tour } from "./tour.ts";
+import { validateTour } from "./validate.ts";
 
 type ParsedArgs = {
   prRef: string | null;
@@ -28,6 +29,11 @@ async function main() {
 
   if (raw[0] === "install-skill") {
     await installSkill(raw.slice(1));
+    return;
+  }
+
+  if (raw[0] === "validate") {
+    await validateCommand(raw.slice(1));
     return;
   }
 
@@ -139,6 +145,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 function printUsage() {
   console.log(
     "usage: pr-tour <pr-ref> [--guide <path>] [--no-guide] [--host]\n" +
+      "       pr-tour validate [path] [--pr <ref>] [--offline]\n" +
       "       pr-tour install-skill [--force]\n" +
       "\n" +
       "  <pr-ref> is one of:\n" +
@@ -155,11 +162,129 @@ function printUsage() {
       "  network:\n" +
       "    --host           bind to all interfaces (for remote-dev access)\n" +
       "\n" +
+      "  validate:\n" +
+      "    parses .pr-tour-guide.yml, checks paths + anchors against the PR.\n" +
+      "    [path]           guide to validate (default: cwd's .pr-tour-guide.yml)\n" +
+      "    --pr <ref>       PR to check against (default: current branch's PR)\n" +
+      "    --offline        skip the gh fetch — schema-only checks\n" +
+      "\n" +
       "  install-skill:\n" +
       "    copies skill/SKILL.md → ~/.claude/skills/pr-tour/SKILL.md\n" +
       "    so Claude Code picks up the /pr-tour skill.\n" +
       "    --force          overwrite an existing installation"
   );
+}
+
+async function validateCommand(args: string[]) {
+  let explicitPath: string | undefined;
+  let prRef: string | null = null;
+  let offline = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a === "--offline") {
+      offline = true;
+      continue;
+    }
+    if (a === "--pr") {
+      const next = args[++i];
+      if (!next) {
+        console.error("pr-tour validate: --pr requires a value");
+        process.exit(1);
+      }
+      prRef = next;
+      continue;
+    }
+    if (a.startsWith("--pr=")) {
+      prRef = a.slice("--pr=".length);
+      continue;
+    }
+    if (a === "-h" || a === "--help") {
+      printUsage();
+      process.exit(0);
+    }
+    if (a.startsWith("-")) {
+      console.error(`pr-tour validate: unknown flag ${a}`);
+      process.exit(1);
+    }
+    if (explicitPath === undefined) {
+      explicitPath = a;
+      continue;
+    }
+    console.error(`pr-tour validate: unexpected argument ${a}`);
+    process.exit(1);
+  }
+
+  const guidePath = await resolveTourPath(explicitPath, process.cwd());
+  if (!guidePath) {
+    console.error(
+      explicitPath
+        ? `pr-tour validate: guide not found: ${explicitPath}`
+        : `pr-tour validate: no .pr-tour-guide.yml (or .yaml) in ${process.cwd()}`,
+    );
+    process.exit(1);
+  }
+
+  let ref = null;
+  let deps = null;
+  if (!offline) {
+    const fallback = await getCurrentRepo();
+    if (prRef) {
+      ref = parsePRRef(prRef, fallback ?? undefined);
+      if (!ref) {
+        console.error(`pr-tour validate: cannot resolve --pr "${prRef}"`);
+        process.exit(1);
+      }
+    } else {
+      ref = await currentBranchPR(fallback);
+      if (!ref) {
+        console.error(
+          "pr-tour validate: could not resolve a PR for the current branch.\n" +
+            "  pass --pr <ref>, or --offline for schema-only checks.",
+        );
+        process.exit(1);
+      }
+    }
+    deps = { fetchPR, fetchFileContent };
+  }
+
+  const report = await validateTour({ guidePath, ref, deps });
+
+  console.log(`\x1b[2mpr-tour validate\x1b[0m ${report.guidePath}`);
+  if (ref) {
+    console.log(
+      `\x1b[2m  against\x1b[0m \x1b[36m${ref.owner}/${ref.repo}\x1b[0m#\x1b[1m${ref.number}\x1b[0m`,
+    );
+  } else {
+    console.log(`\x1b[2m  (offline — schema checks only)\x1b[0m`);
+  }
+
+  for (const e of report.errors) console.log(`  \x1b[31merror\x1b[0m   ${e}`);
+  for (const w of report.warnings) console.log(`  \x1b[33mwarn\x1b[0m    ${w}`);
+
+  if (report.errors.length === 0 && report.warnings.length === 0) {
+    console.log("  \x1b[32mok\x1b[0m — no issues found");
+  } else {
+    console.log(
+      `\n  ${report.errors.length} error(s), ${report.warnings.length} warning(s)`,
+    );
+  }
+
+  process.exit(report.errors.length > 0 ? 1 : 0);
+}
+
+async function currentBranchPR(
+  fallback: { owner: string; repo: string } | null,
+): Promise<import("./types.ts").PRRef | null> {
+  const { $ } = await import("bun");
+  try {
+    const out = await $`gh pr view --json number`.quiet().json();
+    const number = out?.number;
+    if (typeof number !== "number" || !fallback) return null;
+    return { owner: fallback.owner, repo: fallback.repo, number };
+  } catch {
+    return null;
+  }
 }
 
 async function installSkill(args: string[]) {
