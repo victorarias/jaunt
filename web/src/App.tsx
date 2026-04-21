@@ -125,6 +125,7 @@ function Review({ pr }: { pr: PRPayload }) {
       <div className="flex-1 flex overflow-hidden">
         <Sidebar
           files={pr.files}
+          tour={pr.tour}
           draft={draft}
           selectedPath={selectedPath}
           onSelect={setSelectedPath}

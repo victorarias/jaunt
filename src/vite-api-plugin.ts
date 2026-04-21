@@ -2,9 +2,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
 import { fetchPR, submitReviewComment } from "./gh.ts";
 import { clearDraft, loadDraft, saveDraft } from "./drafts.ts";
+import { applyTour, type Tour } from "./tour.ts";
 import type { Draft, PRPayload, PRRef, SubmitResult } from "./types.ts";
 
-export function apiPlugin(opts: { ref: PRRef }): Plugin {
+export function apiPlugin(opts: { ref: PRRef; tour: Tour | null }): Plugin {
   let cachedPR: PRPayload | null = null;
 
   return {
@@ -12,7 +13,10 @@ export function apiPlugin(opts: { ref: PRRef }): Plugin {
     configureServer(server) {
       server.middlewares.use("/api/pr", async (_req, res) => {
         await respondJSON(res, async () => {
-          if (!cachedPR) cachedPR = await fetchPR(opts.ref);
+          if (!cachedPR) {
+            const fetched = await fetchPR(opts.ref);
+            cachedPR = opts.tour ? applyTour(fetched, opts.tour) : fetched;
+          }
           return cachedPR;
         });
       });

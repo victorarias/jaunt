@@ -1,0 +1,127 @@
+version: 1
+
+summary: |
+  PR2 of 3 for background tool calls. Read domain-outward:
+  plan → aggregate → contracts → service → persistence → realtime
+  → synthesis orchestration → thread wiring → tests.
+
+files:
+  - path: docs/plans/2026-04-18-background-tool-calls.md
+    note: |
+      Ground truth. Decision tables (DT-*), invariants (INV-*), examples (EX-*).
+      Skim the status table and the DT-2 "status/source pair rules" — the service
+      enforces those.
+
+  - path: server/internal/background/model.go
+    note: |
+      The BackgroundToolCall aggregate. Open the enums (Status, Source, Surface);
+      everything else in PR2 keys off these.
+
+  - path: server/internal/background/ports.go
+    note: |
+      Inbound + outbound ports for the background core. What the service needs
+      from the rest of the system, expressed as interfaces.
+
+  - path: server/internal/background/service.go
+    note: |
+      OpenCall + Resolve. DT-2 pair-rule enforcement lives here. First-writer-wins
+      idempotency is the load-bearing invariant (INV-5).
+
+  - path: server/internal/background/service_test.go
+    note: |
+      Service-layer tests. Exhaustive DT-2 pair-rule table is the high-value one.
+
+  - path: server/internal/background/postgres.go
+    note: Repository adapter. Thin translation over the sqlc-generated queries.
+
+  - path: server/internal/background/queries.sql
+    note: |
+      Authoritative SQL. Note the first-writer-wins pattern on Resolve
+      (UPDATE … WHERE status = 'pending' RETURNING).
+
+  - path: server/db/migrations/20260419171520_background_tool_calls_synthesis_turn_id.sql
+    note: Schema follows from the aggregate — read after model.go, not before.
+
+  - path: server/internal/integration/background_tool_calls_repository_test.go
+    note: |
+      Integration test against real Postgres. The real contract for the
+      SQL/port pairing.
+
+  - path: server/internal/background/live_publisher.go
+    note: |
+      Realtime publisher. INV-1: resolution payload MUST NOT leak onto the live
+      event — only the agent learns it via the synthesis turn.
+
+  - path: server/internal/background/live_publisher_test.go
+    note: Pins INV-1. Also the bus-unavailable swallow behavior.
+
+  - path: server/internal/background/resolution_opener.go
+    note: |
+      Builds the <background_resolutions> XML that opens the synthesis turn (DT-3).
+      Payload escaping for < and & is load-bearing.
+
+  - path: server/internal/background/resolution_opener_test.go
+    note: Escape rules + canonical shapes R-1 through R-4.
+
+  - path: server/internal/systemjobs/background_tool_call_synthesis.go
+    note: |
+      Synthesis processor. One turn per debounce window, idempotent via
+      ClientRequestID derived from RunAt. EX-2 / EX-4 / INV-11.
+
+  - path: server/internal/systemjobs/background_tool_call_synthesis_test.go
+    note: |
+      Idempotency-key determinism + StartTurn shape. Notice the ClientRequestID
+      assertion — that's the retry-safe idempotency.
+
+  - path: server/internal/systemjobs/background_tool_call_ttl.go
+    note: |
+      TTL sweep. Drains batches, fans out one synthesis schedule per thread,
+      self-reschedules. EX-9.
+
+  - path: server/internal/systemjobs/background_tool_call_ttl_test.go
+    note: Per-thread fanout + self-reschedule invariants.
+
+  - path: server/internal/thread/tool_metadata.go
+    note: |
+      ToolMetadata — marks a tool as BackgroundDispatch. Surface for INV-2
+      (ListTools cache-stable).
+
+  - path: server/internal/thread/tool_capability_gate.go
+    note: INV-2 guard — ListTools must be surface-agnostic/cache-stable.
+
+  - path: server/internal/thread/tool_capability_gate_test.go
+    note: Pins INV-2.
+
+  - path: server/internal/thread/tool_background_dispatch.go
+    note: |
+      Dispatcher. Turns a background-dispatch tool call into an OpenCall + a
+      no-business-payload tool_result (INV-1). INV-4 (call_id = tool_use_id).
+
+  - path: server/internal/thread/tool_background_dispatch_test.go
+    note: INV-1 + INV-4 security-boundary tests.
+
+  - path: server/internal/thread/background_prompt_patches.go
+    note: |
+      Per-turn dynamic state for pending background calls — fed via prompt patches,
+      not via the cached system prompt (INV-12).
+
+  - path: server/internal/thread/background_prompt_patches_test.go
+    note: Shape of the patch and its cache-safety properties.
+
+  - path: server/internal/thread/prompt_contract.go
+    note: Plumbing — how the new patch layer hooks into the existing contract.
+
+  - path: server/internal/thread/service.go
+    note: Thread-service wiring for Resolve.
+
+  - path: server/internal/thread/grpc.go
+    note: gRPC adapter surface for Resolve.
+
+  - path: server/internal/thread/grpc_resolve_background_test.go
+    note: |
+      End-to-end Resolve through gRPC. Tenant isolation
+      (RejectsMismatchedUserOwnership) is the load-bearing security test.
+
+skip:
+  - server/internal/platform/postgres/sqlcgen/queries.sql.go
+  - server/internal/platform/postgres/sqlcgen/models.go

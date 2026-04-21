@@ -50,6 +50,14 @@ export function MainPanel({
       </div>
 
       <div className="flex-1 overflow-auto">
+        {file.tourNote && (
+          <div className="px-5 py-3 bg-emerald-500/5 border-b border-emerald-500/20 text-[13px] text-emerald-200/90 whitespace-pre-wrap leading-relaxed">
+            <span className="uppercase tracking-wide text-[10px] text-emerald-400 mr-2">
+              Tour
+            </span>
+            {file.tourNote}
+          </div>
+        )}
         <DiffView file={file} highlighter={highlighter} />
       </div>
 

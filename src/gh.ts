@@ -48,9 +48,11 @@ export async function fetchPR(ref: PRRef): Promise<PRPayload> {
     hunks: f.patch ? parseHunks(f.patch) : [],
     binary: !f.patch && (f.additions > 0 || f.deletions > 0),
     language: inferLanguage(f.filename),
+    tourNote: null,
+    tourGroup: "other",
   }));
 
-  return { meta, files };
+  return { meta, files, tour: null };
 }
 
 function mapStatus(s: ApiFile["status"]): FileStatus {

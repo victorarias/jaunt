@@ -44,11 +44,19 @@ export type PRFile = {
   hunks: DiffHunk[];
   binary: boolean;
   language: string | null;
+  tourNote: string | null;
+  tourGroup: "tour" | "other" | "skip";
+};
+
+export type TourMeta = {
+  summary: string;
+  warnings: string[];
 };
 
 export type PRPayload = {
   meta: PRMeta;
   files: PRFile[];
+  tour: TourMeta | null;
 };
 
 export type FileDraft = {

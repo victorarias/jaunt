@@ -10,4 +10,5 @@ export type {
   PRPayload,
   PRRef,
   SubmitResult,
+  TourMeta,
 } from "../../src/types.ts";
