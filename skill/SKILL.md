@@ -253,39 +253,63 @@ It parses the YAML with the same loader the app uses, then reports:
 
 **Do not improvise your own YAML validation** (no `python -c "import yaml..."`, no inline scripts, no eyeballing the file yourself). `pr-tour validate` is the contract — it catches everything the app will silently misinterpret, and it's the one source of truth. If `pr-tour` isn't on `$PATH`, run `cd ~/projects/pr-tour && bun run src/cli.ts validate [guide-path]` from the target repo's directory (pass the guide path explicitly since cwd will be the pr-tour repo).
 
-### 9. Launch the app
+### 9. Ask the user how to run it
 
-Once `validate` is clean, start the server yourself — don't leave it as a command for the user to copy.
+Before launching, ask the user one short question:
+
+> *"fire-and-forget (just open it for you), or should I wait for your review and act on the feedback?"*
+
+There's no sensible default here — the two modes have very different implications for what you do next, and guessing wrong wastes the user's time.
+
+- **fire-and-forget** — the user wants the tour; your job ends once the app is up.
+- **await-and-act-on-feedback** — the user wants you to block until they submit and then incorporate their comments. This matches phrasings like *"review this PR and address my comments"*, *"wait for my feedback"*, *"when I'm done let me know what you'll change"*.
+
+Don't re-ask if the user's original request already made the mode obvious (*"build a tour, then come back and fix the things I flag"* is unambiguously await-and-act).
+
+### 10. Launch the app
+
+Start the server yourself — don't leave it as a command for the user to copy.
 
 ```bash
-pr-tour <pr-ref>           # on the user's own machine; auto-opens the browser
-pr-tour <pr-ref> --host    # on a remote dev machine (ssh, codespace, sandbox);
-                           # prints a URL like http://<hostname>:5174 for the
-                           # user to open in their own browser — no auto-open
+pr-tour <pr-ref>                   # user's own machine; auto-opens browser
+pr-tour <pr-ref> --host            # remote dev (ssh, codespace, sandbox);
+                                   # prints http://<hostname>:5174/, no auto-open
+pr-tour <pr-ref> --port 5174       # bind a specific port (see re-launch below)
 ```
 
-If `pr-tour` isn't on `$PATH`, fall back to `cd ~/projects/pr-tour && bun run start <pr-ref>` (same `--host` rule applies).
+If `pr-tour` isn't on `$PATH`, fall back to `cd ~/projects/pr-tour && bun run start <pr-ref>` (same flags apply).
 
-**The server exits on successful submit.** When the reviewer hits "Submit review" in the app, the CLI prints one of these sentinel lines to stdout and then exits `0`:
+**Startup sentinel** — on bind, pr-tour prints:
+
+```
+pr-tour: LISTENING port=5174 url=http://localhost:5174/
+```
+
+Capture the `port=` value. You'll need it for the re-launch step below.
+
+**Submit sentinel + exit** — when the reviewer clicks Submit, pr-tour prints one of these and then exits `0`:
 
 ```
 pr-tour: FEEDBACK_READY path=/home/victor/.pr-tour/owner_repo_123.feedback.md
 pr-tour: REVIEW_POSTED url=https://github.com/owner/repo/pull/123#...
 ```
 
-This signal is the primary way an agent knows the user is done. Two modes to choose from:
+#### Spawn shape
 
-- **Fire-and-forget** — the user wants the tour, nothing further from you. Spawn in the background and report the URL. When the user submits, the backgrounded process exits; you don't need to do anything with it.
+- **fire-and-forget**: spawn in the background. Report the URL. Done — the backgrounded process will exit on its own when the user submits; you don't need to do anything with that.
 
-- **Await-and-act-on-feedback** — the user wants you to act on the review they're about to write (they asked for this explicitly: *"review this PR and address my comments"*, *"wait for my feedback"*, etc.). Spawn in the **foreground** and block on the process. When it exits, read `~/.pr-tour/<owner>_<repo>_<num>.feedback.md`. If the file exists (target=agent), incorporate the feedback. If it doesn't (target=github), the user posted directly to the PR and there's nothing for you to do locally — tell them you saw the GitHub submission. If the user closes the browser without submitting, the process won't exit on its own; set a reasonable timeout and move on.
+- **await-and-act-on-feedback**: spawn in the **foreground** and block on the process. When it exits:
+  1. If `~/.pr-tour/<owner>_<repo>_<num>.feedback.md` exists → read it and act on the feedback. After you're done, **re-launch on the same port**: `pr-tour <ref> --port <N>` where `<N>` is the port from the original `LISTENING` line. Tell the user the server's back up and to refresh their browser tab to see the updated code and leave follow-up comments.
+  2. If the feedback file doesn't exist → the user posted to GitHub directly (`REVIEW_POSTED` was printed instead). Acknowledge you saw the GitHub submission; no local action. Do not re-launch.
+  3. If the process is still running after a reasonable timeout → the user likely closed the browser without submitting. Kill the process, tell the user you stopped waiting, and ask if they still want something from you.
 
-Default to fire-and-forget unless the user clearly asked you to wait.
+The re-launch makes the loop feel continuous: same URL, user refreshes, drafts are fresh (they were cleared on submit), and the new process picks up whatever commits you just made.
 
 **"Open the tour" / "open it" means launch the app.** The YAML is an internal artifact — the user never wants you to cat / Read / open the `.pr-tour-guide.yml` file itself, even when their request is that terse. Their tour *is* the running web page. So: when the user asks to "open the tour", "open it", "show me", or any similar verbage after a tour has been created, spawn `pr-tour <ref>` (with `--host` as appropriate) — don't display the YAML. If the app is already running, tell them the URL; don't restart.
 
 **Heads up: the tour is loaded once at startup.** If you (or the user) edit `.pr-tour-guide.yml` after launching, the running server won't pick up the change — kill it (Ctrl-C) and re-run `pr-tour <pr-ref>`. Tell the user this when you report, so they don't wonder why a tweak isn't showing up.
 
-### 10. Report
+### 11. Report
 
 Tell the user, tersely:
 - The file you wrote and where

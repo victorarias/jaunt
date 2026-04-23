@@ -22,6 +22,7 @@ type ParsedArgs = {
   guide: string | undefined;
   noGuide: boolean;
   host: boolean;
+  port: number | undefined;
 };
 
 async function main() {
@@ -100,6 +101,7 @@ async function main() {
     deps,
     open: !process.env.PR_TOUR_NO_OPEN && !host,
     host,
+    port: args.port,
     onSubmit: (result) => {
       if (!result.ok) return;
       // Machine-readable sentinel lines so a spawning agent can grep stdout
@@ -119,11 +121,36 @@ async function main() {
     },
   });
   handle.viteServer.printUrls();
+  // Machine-readable startup sentinel so an agent spawning pr-tour can grab
+  // the bound port without parsing vite's pretty-printed URL output. Useful
+  // when re-launching after acting on feedback so the user's browser refresh
+  // hits the same port.
+  const boundPort = portFromHandle(handle);
+  if (boundPort !== null) {
+    console.log(`pr-tour: LISTENING port=${boundPort} url=${handle.url}`);
+  }
   console.log("\x1b[2m(Ctrl-C to stop; server exits on submit)\x1b[0m");
 }
 
+function portFromHandle(handle: {
+  viteServer: { httpServer: { address(): unknown } | null };
+}): number | null {
+  const addr = handle.viteServer.httpServer?.address?.();
+  if (addr && typeof addr === "object" && "port" in addr) {
+    const p = (addr as { port: number }).port;
+    return Number.isFinite(p) ? p : null;
+  }
+  return null;
+}
+
 function parseArgs(argv: string[]): ParsedArgs {
-  const out: ParsedArgs = { prRef: null, guide: undefined, noGuide: false, host: false };
+  const out: ParsedArgs = {
+    prRef: null,
+    guide: undefined,
+    noGuide: false,
+    host: false,
+    port: undefined,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "-h" || a === "--help") {
@@ -151,6 +178,25 @@ function parseArgs(argv: string[]): ParsedArgs {
       out.guide = a.slice("--guide=".length);
       continue;
     }
+    if (a === "--port") {
+      const next = argv[++i];
+      const n = next ? parseInt(next, 10) : NaN;
+      if (!Number.isFinite(n) || n < 0 || n > 65535) {
+        console.error("pr-tour: --port requires an integer 0–65535");
+        process.exit(1);
+      }
+      out.port = n;
+      continue;
+    }
+    if (a.startsWith("--port=")) {
+      const n = parseInt(a.slice("--port=".length), 10);
+      if (!Number.isFinite(n) || n < 0 || n > 65535) {
+        console.error("pr-tour: --port requires an integer 0–65535");
+        process.exit(1);
+      }
+      out.port = n;
+      continue;
+    }
     if (!out.prRef && !a.startsWith("-")) {
       out.prRef = a;
       continue;
@@ -161,7 +207,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 function printUsage() {
   console.log(
-    "usage: pr-tour <pr-ref> [--guide <path>] [--no-guide] [--host]\n" +
+    "usage: pr-tour <pr-ref> [--guide <path>] [--no-guide] [--host] [--port <N>]\n" +
       "       pr-tour validate [path] [--pr <ref>] [--offline]\n" +
       "       pr-tour install-skill [--force]\n" +
       "\n" +
@@ -178,6 +224,7 @@ function printUsage() {
       "\n" +
       "  network:\n" +
       "    --host           bind to all interfaces (for remote-dev access)\n" +
+      "    --port <N>       bind to a specific port (default: random free)\n" +
       "\n" +
       "  validate:\n" +
       "    parses .pr-tour-guide.yml, checks paths + anchors against the PR.\n" +
