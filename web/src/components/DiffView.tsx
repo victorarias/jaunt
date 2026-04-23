@@ -7,6 +7,10 @@ import {
   type Highlighter,
 } from "../hooks/useHighlighter.ts";
 import { useLineCommentForm } from "../hooks/useLineCommentForm.ts";
+import {
+  buildOutsideBlocks,
+  type OutsideBlock,
+} from "../lib/outsideBlocks.ts";
 import { Thread } from "./Thread.tsx";
 import { UserLineComment } from "./UserLineComment.tsx";
 
@@ -22,8 +26,13 @@ type Props = {
 
 type IndexedAnnotation = { index: number; annotation: Annotation };
 
+type Section =
+  | { kind: "hunk"; newStart: number; hunk: DiffHunk; hunkIndex: number }
+  | { kind: "outside"; newStart: number; block: OutsideBlock };
+
 // Anchor each annotation to the first diff line whose new-side number falls in
-// its range. Annotations that don't resolve into the diff are listed above.
+// its range. Annotations that don't resolve into the diff get rendered in a
+// synthesized context block built from the full-file content.
 function assignAnnotationsToLines(file: PRFile): {
   byDiffKey: Map<string, IndexedAnnotation[]>;
   outsideDiff: IndexedAnnotation[];
@@ -67,10 +76,43 @@ export function DiffView({
     () => assignAnnotationsToLines(file),
     [file],
   );
+  const outsideBlocks = useMemo(
+    () =>
+      file.content !== null
+        ? buildOutsideBlocks(file.content, outsideDiff)
+        : [],
+    [file.content, outsideDiff],
+  );
+  const unresolvedOutside = useMemo(
+    () => (file.content === null ? outsideDiff : []),
+    [file.content, outsideDiff],
+  );
+  const sections = useMemo<Section[]>(() => {
+    const list: Section[] = [
+      ...file.hunks.map(
+        (hunk, hunkIndex): Section => ({
+          kind: "hunk",
+          newStart: hunk.newStart,
+          hunk,
+          hunkIndex,
+        }),
+      ),
+      ...outsideBlocks.map(
+        (block): Section => ({
+          kind: "outside",
+          newStart: block.newStart,
+          block,
+        }),
+      ),
+    ];
+    list.sort((a, b) => a.newStart - b.newStart);
+    return list;
+  }, [file.hunks, outsideBlocks]);
+
   const { openLines, openLine, closeLine } =
     useLineCommentForm(onSetLineComment);
 
-  if (file.hunks.length === 0) {
+  if (file.hunks.length === 0 && sections.length === 0 && unresolvedOutside.length === 0) {
     return (
       <div
         style={{
@@ -88,10 +130,12 @@ export function DiffView({
 
   return (
     <div className="code">
-      {outsideDiff.length > 0 && (
+      {unresolvedOutside.length > 0 && (
         <div className="outside-notice">
-          <div className="ot-title">Annotations outside the diff</div>
-          {outsideDiff.map(({ index, annotation }) => (
+          <div className="ot-title">
+            Annotations outside the diff (content unavailable)
+          </div>
+          {unresolvedOutside.map(({ index, annotation }) => (
             <Thread
               key={index}
               id={`ann-${fileIndex}-${index}`}
@@ -103,24 +147,41 @@ export function DiffView({
           ))}
         </div>
       )}
-      {file.hunks.map((hunk, hIdx) => (
-        <HunkView
-          key={hIdx}
-          hunkIndex={hIdx}
-          hunk={hunk}
-          fileIndex={fileIndex}
-          lang={lang}
-          highlighter={highlighter}
-          byDiffKey={byDiffKey}
-          replies={replies}
-          onSetReply={onSetReply}
-          openLines={openLines}
-          onOpenLine={openLine}
-          onCloseLine={closeLine}
-          lineComments={lineComments}
-          onSetLineComment={onSetLineComment}
-        />
-      ))}
+      {sections.map((section, idx) =>
+        section.kind === "hunk" ? (
+          <HunkView
+            key={`h-${section.hunkIndex}`}
+            hunkIndex={section.hunkIndex}
+            hunk={section.hunk}
+            fileIndex={fileIndex}
+            lang={lang}
+            highlighter={highlighter}
+            byDiffKey={byDiffKey}
+            replies={replies}
+            onSetReply={onSetReply}
+            openLines={openLines}
+            onOpenLine={openLine}
+            onCloseLine={closeLine}
+            lineComments={lineComments}
+            onSetLineComment={onSetLineComment}
+          />
+        ) : (
+          <OutsideBlockView
+            key={`o-${idx}`}
+            block={section.block}
+            fileIndex={fileIndex}
+            lang={lang}
+            highlighter={highlighter}
+            replies={replies}
+            onSetReply={onSetReply}
+            openLines={openLines}
+            onOpenLine={openLine}
+            onCloseLine={closeLine}
+            lineComments={lineComments}
+            onSetLineComment={onSetLineComment}
+          />
+        ),
+      )}
     </div>
   );
 }
@@ -191,6 +252,95 @@ function HunkView({
               />
             ))}
             {formOpen && n !== null && (
+              <UserLineComment
+                line={n}
+                text={lineComments[String(n)] ?? ""}
+                onChange={(t) => onSetLineComment(n, t)}
+                onClose={() => onCloseLine(n)}
+                autoFocus={openLines.has(n) && !hasComment}
+              />
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function OutsideBlockView({
+  block,
+  fileIndex,
+  lang,
+  highlighter,
+  replies,
+  onSetReply,
+  openLines,
+  onOpenLine,
+  onCloseLine,
+  lineComments,
+  onSetLineComment,
+}: {
+  block: OutsideBlock;
+  fileIndex: number;
+  lang: BundledLanguage | "plaintext";
+  highlighter: Highlighter | null;
+  replies: Record<string, string>;
+  onSetReply: (annotationIdx: number, text: string) => void;
+  openLines: Set<number>;
+  onOpenLine: (line: number) => void;
+  onCloseLine: (line: number) => void;
+  lineComments: Record<string, string>;
+  onSetLineComment: (line: number, text: string) => void;
+}) {
+  const annotationsByLine = useMemo(() => {
+    const m = new Map<number, IndexedAnnotation[]>();
+    for (const ia of block.annotations) {
+      const key = ia.annotation.lineStart;
+      const list = m.get(key) ?? [];
+      list.push(ia);
+      m.set(key, list);
+    }
+    return m;
+  }, [block.annotations]);
+  const annotatedLines = useMemo(() => {
+    const s = new Set<number>();
+    for (const { annotation } of block.annotations) {
+      for (let n = annotation.lineStart; n <= annotation.lineEnd; n++) s.add(n);
+    }
+    return s;
+  }, [block.annotations]);
+
+  const end = block.newStart + block.lines.length - 1;
+  return (
+    <>
+      <div className="hunk-header outside" aria-label="context outside the diff">
+        context · lines {block.newStart}–{end} (not in diff)
+      </div>
+      {block.lines.map((line, i) => {
+        const n = line.newNumber!;
+        const hits = annotationsByLine.get(n);
+        const hasComment = String(n) in lineComments;
+        const formOpen = openLines.has(n) || hasComment;
+        return (
+          <div key={i}>
+            <LineRow
+              line={line}
+              lang={lang}
+              highlighter={highlighter}
+              annotated={annotatedLines.has(n)}
+              onAddComment={!formOpen ? () => onOpenLine(n) : null}
+            />
+            {hits?.map(({ index, annotation }) => (
+              <Thread
+                key={index}
+                id={`ann-${fileIndex}-${index}`}
+                annotation={annotation}
+                index={index}
+                reply={replies[String(index)] ?? ""}
+                onReplyChange={onSetReply}
+              />
+            ))}
+            {formOpen && (
               <UserLineComment
                 line={n}
                 text={lineComments[String(n)] ?? ""}

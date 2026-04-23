@@ -746,6 +746,14 @@ a:hover {
 .hunk-header:first-child {
   border-top: none;
 }
+.hunk-header.outside {
+  background: color-mix(in srgb, var(--warn) 6%, var(--bg-1));
+  color: color-mix(in srgb, var(--warn) 80%, var(--fg-dim));
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
 
 .row {
   display: flex;

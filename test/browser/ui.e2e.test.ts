@@ -560,4 +560,90 @@ describe("ui e2e — real browser round-trip", () => {
     },
     90_000,
   );
+
+  test(
+    "annotations outside the diff render inline next to their target line with surrounding context",
+    async () => {
+      // A ten-line file; diff hunk only touches line 2, but the annotation
+      // targets line 7 — which under the old behaviour got banished to a
+      // top-of-file notice with no code context.
+      const content =
+        "l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\n";
+      const payload = makePayload({
+        meta: makeMeta({ title: "outside-diff annotation" }),
+        files: [
+          makeFile({
+            path: "src/out.ts",
+            view: "diff",
+            content,
+            hunks: [
+              {
+                oldStart: 1,
+                oldLines: 2,
+                newStart: 1,
+                newLines: 2,
+                header: "",
+                lines: [
+                  { type: "context", oldNumber: 1, newNumber: 1, content: "l1" },
+                  { type: "add", oldNumber: null, newNumber: 2, content: "l2" },
+                ],
+              },
+            ],
+            annotations: [
+              makeAnnotation(7, [
+                { author: "bot", body: "Out-of-diff note on line 7." },
+              ]),
+            ],
+            tourGroup: "tour",
+            additions: 1,
+            deletions: 0,
+          }),
+        ],
+        tour: makeTour({ summary: "." }),
+      });
+
+      const fx = await bootstrap(payload);
+      try {
+        await fx.page.locator(".drive .next").click();
+        await fx.page
+          .locator("#stop-1")
+          .waitFor({ state: "visible", timeout: 5_000 });
+
+        // The old "outside notice" must not appear — we render inline instead.
+        expect(
+          await fx.page.locator("#stop-1 .outside-notice").count(),
+        ).toBe(0);
+
+        // The context-only header is present and distinct from real @@ headers.
+        const ctxHeader = fx.page.locator("#stop-1 .hunk-header.outside");
+        await ctxHeader.waitFor({ state: "visible", timeout: 5_000 });
+
+        // The annotated line (7) and its ±3 context must be rendered.
+        const rows = fx.page.locator("#stop-1 .code .row");
+        const rowNums = await rows.evaluateAll((els) =>
+          els
+            .map((el) => el.querySelectorAll(".num")[1]?.textContent?.trim())
+            .filter((v): v is string => !!v),
+        );
+        for (const want of ["4", "5", "6", "7", "8", "9", "10"]) {
+          expect(rowNums).toContain(want);
+        }
+
+        // The annotation thread is anchored inside the block — it must sit
+        // after line 7's row and before line 8's row, not at the top of the
+        // file card.
+        const threadBody = await fx.page
+          .locator("#stop-1 .thread")
+          .first()
+          .textContent();
+        expect(threadBody ?? "").toContain("Out-of-diff note on line 7.");
+
+        expect(fx.pageErrors).toEqual([]);
+        expect(fx.consoleErrors).toEqual([]);
+      } finally {
+        await fx.cleanup();
+      }
+    },
+    90_000,
+  );
 });
