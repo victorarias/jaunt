@@ -386,6 +386,21 @@ describe("ui e2e — real browser round-trip", () => {
             path: "src/a.ts",
             view: "content",
             content: "l1\nl2\nl3\nl4\nl5\nl6\n",
+            hunks: [
+              {
+                oldStart: 1,
+                oldLines: 5,
+                newStart: 1,
+                newLines: 6,
+                header: "",
+                lines: [
+                  { type: "context", oldNumber: 1, newNumber: 1, content: "l1" },
+                  { type: "add", oldNumber: null, newNumber: 2, content: "l2" },
+                  { type: "del", oldNumber: 2, newNumber: null, content: "old-2" },
+                  { type: "context", oldNumber: 3, newNumber: 3, content: "l3" },
+                ],
+              },
+            ],
             annotations: [
               makeAnnotation(2, [{ author: "bot", body: "A1" }]),
               makeAnnotation(4, [{ author: "bot", body: "A2" }]),
@@ -418,6 +433,14 @@ describe("ui e2e — real browser round-trip", () => {
 
         // Focus something outside input so 'n'/'p'/arrows hit the app handler.
         await fx.page.locator(".file-card").first().click();
+
+        // Full-file view must still show the diff: added row + deleted row.
+        expect(
+          await fx.page.locator("#stop-1 .code.full .row.add").count(),
+        ).toBeGreaterThan(0);
+        expect(
+          await fx.page.locator("#stop-1 .code.full .row.del").count(),
+        ).toBeGreaterThan(0);
 
         // Three 'n' presses walk to the third annotation, still on file A.
         await fx.page.keyboard.press("n");
