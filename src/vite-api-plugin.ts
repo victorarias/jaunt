@@ -2,12 +2,15 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
 import { createApiHandlers, type ApiDeps } from "./api-handlers.ts";
 import type { Tour } from "./tour.ts";
-import type { Draft, PRRef, SubmitTarget } from "./types.ts";
+import type { Draft, PRRef, SubmitResult, SubmitTarget } from "./types.ts";
+
+export type SubmitHook = (result: SubmitResult) => void | Promise<void>;
 
 export function apiPlugin(opts: {
   ref: PRRef;
   tour: Tour | null;
   deps: ApiDeps;
+  onSubmit?: SubmitHook;
 }): Plugin {
   const handlers = createApiHandlers(opts);
 
@@ -41,14 +44,26 @@ export function apiPlugin(opts: {
           res.end();
           return;
         }
+        const captured: { value: SubmitResult | null } = { value: null };
         await respondJSON(res, async () => {
           const body = await readBody(req);
           const { body: reviewBody, target } = JSON.parse(body) as {
             body: string;
             target?: SubmitTarget;
           };
-          return handlers.submit(reviewBody, target ?? "github");
+          const r = await handlers.submit(reviewBody, target ?? "github");
+          captured.value = r;
+          return r;
         });
+        const result = captured.value;
+        if (result && result.ok && opts.onSubmit) {
+          // Fire after the response has flushed so the browser shows its
+          // success modal before the CLI (in its hook) may exit the process.
+          const hook = opts.onSubmit;
+          queueMicrotask(() => {
+            void hook(result);
+          });
+        }
       });
     },
   };

@@ -100,9 +100,26 @@ async function main() {
     deps,
     open: !process.env.PR_TOUR_NO_OPEN && !host,
     host,
+    onSubmit: (result) => {
+      if (!result.ok) return;
+      // Machine-readable sentinel lines so a spawning agent can grep stdout
+      // for a signal even if it chose to background instead of await.
+      if (result.target === "agent") {
+        console.log(`pr-tour: FEEDBACK_READY path=${result.path}`);
+      } else {
+        console.log(`pr-tour: REVIEW_POSTED url=${result.url}`);
+      }
+      // Exit on successful submit — the session is effectively over (draft
+      // is cleared on submit). This is the primary signal for agents that
+      // spawned pr-tour and are awaiting the review. Give the event loop a
+      // beat so the HTTP response + Vite HMR flush before we tear down.
+      setTimeout(() => {
+        void handle.close().finally(() => process.exit(0));
+      }, 250);
+    },
   });
   handle.viteServer.printUrls();
-  console.log("\x1b[2m(Ctrl-C to stop)\x1b[0m");
+  console.log("\x1b[2m(Ctrl-C to stop; server exits on submit)\x1b[0m");
 }
 
 function parseArgs(argv: string[]): ParsedArgs {

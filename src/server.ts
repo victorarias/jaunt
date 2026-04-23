@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import type { ApiDeps } from "./api-handlers.ts";
 import type { Tour } from "./tour.ts";
 import type { PRRef } from "./types.ts";
-import { apiPlugin } from "./vite-api-plugin.ts";
+import { apiPlugin, type SubmitHook } from "./vite-api-plugin.ts";
 
 export type StartServerOptions = {
   ref: PRRef;
@@ -18,6 +18,8 @@ export type StartServerOptions = {
   host?: boolean;
   /** Port to listen on. 0 = pick a random free port. Default: 0. */
   port?: number;
+  /** Called after a successful /api/submit, after the HTTP response flushes. */
+  onSubmit?: SubmitHook;
 };
 
 export type ServerHandle = {
@@ -38,7 +40,12 @@ export async function startServer(
     plugins: [
       react(),
       tailwindcss(),
-      apiPlugin({ ref: opts.ref, tour: opts.tour, deps: opts.deps }),
+      apiPlugin({
+        ref: opts.ref,
+        tour: opts.tour,
+        deps: opts.deps,
+        onSubmit: opts.onSubmit,
+      }),
     ],
     server: {
       port: opts.port ?? 0,

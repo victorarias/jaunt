@@ -255,7 +255,7 @@ It parses the YAML with the same loader the app uses, then reports:
 
 ### 9. Launch the app
 
-Once `validate` is clean, start the server yourself — don't leave it as a command for the user to copy. Spawn in the background so it doesn't block your session:
+Once `validate` is clean, start the server yourself — don't leave it as a command for the user to copy.
 
 ```bash
 pr-tour <pr-ref>           # on the user's own machine; auto-opens the browser
@@ -265,6 +265,21 @@ pr-tour <pr-ref> --host    # on a remote dev machine (ssh, codespace, sandbox);
 ```
 
 If `pr-tour` isn't on `$PATH`, fall back to `cd ~/projects/pr-tour && bun run start <pr-ref>` (same `--host` rule applies).
+
+**The server exits on successful submit.** When the reviewer hits "Submit review" in the app, the CLI prints one of these sentinel lines to stdout and then exits `0`:
+
+```
+pr-tour: FEEDBACK_READY path=/home/victor/.pr-tour/owner_repo_123.feedback.md
+pr-tour: REVIEW_POSTED url=https://github.com/owner/repo/pull/123#...
+```
+
+This signal is the primary way an agent knows the user is done. Two modes to choose from:
+
+- **Fire-and-forget** — the user wants the tour, nothing further from you. Spawn in the background and report the URL. When the user submits, the backgrounded process exits; you don't need to do anything with it.
+
+- **Await-and-act-on-feedback** — the user wants you to act on the review they're about to write (they asked for this explicitly: *"review this PR and address my comments"*, *"wait for my feedback"*, etc.). Spawn in the **foreground** and block on the process. When it exits, read `~/.pr-tour/<owner>_<repo>_<num>.feedback.md`. If the file exists (target=agent), incorporate the feedback. If it doesn't (target=github), the user posted directly to the PR and there's nothing for you to do locally — tell them you saw the GitHub submission. If the user closes the browser without submitting, the process won't exit on its own; set a reasonable timeout and move on.
+
+Default to fire-and-forget unless the user clearly asked you to wait.
 
 **"Open the tour" / "open it" means launch the app.** The YAML is an internal artifact — the user never wants you to cat / Read / open the `.pr-tour-guide.yml` file itself, even when their request is that terse. Their tour *is* the running web page. So: when the user asks to "open the tour", "open it", "show me", or any similar verbage after a tour has been created, spawn `pr-tour <ref>` (with `--host` as appropriate) — don't display the YAML. If the app is already running, tell them the URL; don't restart.
 
