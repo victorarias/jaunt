@@ -51,6 +51,8 @@ export type Annotation = {
 export type PRFile = {
   path: string;
   oldPath: string | null;
+  /** Blob SHA of the file at the PR head — used as fallback when the 1MB contents API refuses. */
+  blobSha: string | null;
   status: FileStatus;
   additions: number;
   deletions: number;

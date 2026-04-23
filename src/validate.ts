@@ -14,6 +14,7 @@ export type ValidateDeps = {
     ref: PRRef,
     sha: string,
     path: string,
+    blobSha?: string | null,
   ) => Promise<string | null>;
 };
 
@@ -99,6 +100,9 @@ async function validateAgainstPR(
   }
 
   const prFiles = new Set(payload.files.map((f) => f.path));
+  const blobShaByPath = new Map<string, string | null>(
+    payload.files.map((f) => [f.path, f.blobSha]),
+  );
 
   for (const entry of tour.files) {
     if (!prFiles.has(entry.path)) {
@@ -126,22 +130,33 @@ async function validateAgainstPR(
 
     let content: string | null = null;
     try {
-      content = await deps.fetchFileContent(ref, payload.meta.headSha, entry.path);
+      content = await deps.fetchFileContent(
+        ref,
+        payload.meta.headSha,
+        entry.path,
+        blobShaByPath.get(entry.path) ?? null,
+      );
     } catch (err) {
-      report.warnings.push(
-        `"${entry.path}": failed to fetch content (${err instanceof Error ? err.message : String(err)})`,
+      report.errors.push(
+        `"${entry.path}": failed to fetch content (${err instanceof Error ? err.message : String(err)}) — the app won't be able to resolve anchors`,
       );
       continue;
     }
 
     if (content === null) {
-      if (entry.view === "content") {
+      if (entry.annotations.length > 0) {
+        // The contents API caps at 1MB; the blob-API fallback runs after. If
+        // we're still null here, both paths failed and the anchors literally
+        // cannot land in the UI — that's an error, not a warning.
+        report.errors.push(
+          `"${entry.path}": has ${entry.annotations.length} annotation(s) but content unavailable after both contents API and blob API — anchors will not resolve at runtime. Check file accessibility or remove the annotations.`,
+        );
+      } else if (entry.view === "content") {
+        // view=content with no annotations means the app falls back to diff
+        // — annoying (the reader gets the all-add diff instead of the prose)
+        // but not broken. Warn rather than error.
         report.warnings.push(
           `"${entry.path}": view=content requested but content unavailable (app will fall back to diff)`,
-        );
-      } else if (entry.annotations.length > 0) {
-        report.warnings.push(
-          `"${entry.path}": annotations present but content unavailable — anchors cannot be verified`,
         );
       }
       continue;

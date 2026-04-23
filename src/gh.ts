@@ -10,6 +10,7 @@ import type {
 } from "./types.ts";
 
 type ApiFile = {
+  sha: string;
   filename: string;
   previous_filename?: string;
   status: "added" | "modified" | "removed" | "renamed" | "copied" | "changed" | "unchanged";
@@ -42,6 +43,7 @@ export async function fetchPR(ref: PRRef): Promise<PRPayload> {
   const files: PRFile[] = apiFiles.map((f): PRFile => ({
     path: f.filename,
     oldPath: f.previous_filename ?? null,
+    blobSha: f.sha ?? null,
     status: mapStatus(f.status),
     additions: f.additions,
     deletions: f.deletions,
@@ -234,13 +236,32 @@ export async function submitReviewComment(
 export async function fetchFileContent(
   ref: PRRef,
   sha: string,
-  path: string
+  path: string,
+  blobSha?: string | null,
 ): Promise<string | null> {
   const slug = `${ref.owner}/${ref.repo}`;
-  const apiPath = `/repos/${slug}/contents/${path}?ref=${sha}`;
+  // Try the contents API first — cheap, serves raw bytes directly. But it
+  // hard-caps at 1MB, so large files (long generated components, plan docs
+  // with giant code blocks, etc.) get a 403 and we fall through.
   try {
+    const apiPath = `/repos/${slug}/contents/${path}?ref=${sha}`;
     const result = await $`gh api ${apiPath} -H ${"Accept: application/vnd.github.raw"}`.quiet();
     return result.stdout.toString("utf-8");
+  } catch {
+    // fall through to the blob-API fallback below
+  }
+
+  // Fallback: Git blobs API via the blob sha carried on the PR-files entry.
+  // No 1MB cap — handles large files. Returns base64 JSON; decode ourselves.
+  if (!blobSha) return null;
+  try {
+    const blob = (await $`gh api /repos/${slug}/git/blobs/${blobSha}`
+      .quiet()
+      .json()) as { content?: string; encoding?: string };
+    if (blob.encoding === "base64" && typeof blob.content === "string") {
+      return Buffer.from(blob.content, "base64").toString("utf-8");
+    }
+    return null;
   } catch {
     return null;
   }

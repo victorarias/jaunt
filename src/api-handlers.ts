@@ -13,6 +13,7 @@ export type ApiDeps = {
     ref: PRRef,
     sha: string,
     path: string,
+    blobSha?: string | null,
   ) => Promise<string | null>;
   submitReviewComment: (ref: PRRef, body: string) => Promise<string>;
   writeFeedback: (ref: PRRef, body: string) => Promise<string>;
@@ -43,10 +44,18 @@ export function createApiHandlers(opts: {
       return cached;
     }
     const contentCache = new Map<string, Promise<string | null>>();
+    const blobShaByPath = new Map<string, string | null>(
+      fetched.files.map((f) => [f.path, f.blobSha]),
+    );
     const loadContent = (path: string): Promise<string | null> => {
       let p = contentCache.get(path);
       if (!p) {
-        p = opts.deps.fetchFileContent(opts.ref, fetched.meta.headSha, path);
+        p = opts.deps.fetchFileContent(
+          opts.ref,
+          fetched.meta.headSha,
+          path,
+          blobShaByPath.get(path) ?? null,
+        );
         contentCache.set(path, p);
       }
       return p;

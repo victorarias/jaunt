@@ -40,6 +40,7 @@ export function makeFile(overrides: Partial<PRFile> = {}): PRFile {
   return {
     path: "src/middleware/rateLimit.ts",
     oldPath: null,
+    blobSha: "fakeblobsha0000000000000000000000000000",
     status: "added",
     additions: 10,
     deletions: 0,
