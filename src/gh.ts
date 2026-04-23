@@ -243,17 +243,22 @@ export async function fetchFileContent(
   // Try the contents API first — cheap, serves raw bytes directly. But it
   // hard-caps at 1MB, so large files (long generated components, plan docs
   // with giant code blocks, etc.) get a 403 and we fall through.
+  let contentsErr: string | null = null;
   try {
     const apiPath = `/repos/${slug}/contents/${path}?ref=${sha}`;
     const result = await $`gh api ${apiPath} -H ${"Accept: application/vnd.github.raw"}`.quiet();
     return result.stdout.toString("utf-8");
-  } catch {
-    // fall through to the blob-API fallback below
+  } catch (err) {
+    contentsErr = describeFetchError(err);
   }
 
   // Fallback: Git blobs API via the blob sha carried on the PR-files entry.
   // No 1MB cap — handles large files. Returns base64 JSON; decode ourselves.
-  if (!blobSha) return null;
+  if (!blobSha) {
+    logFetchFailure(path, contentsErr, "no blob sha on the PR-files entry");
+    return null;
+  }
+  let blobErr: string | null = null;
   try {
     const blob = (await $`gh api /repos/${slug}/git/blobs/${blobSha}`
       .quiet()
@@ -261,8 +266,50 @@ export async function fetchFileContent(
     if (blob.encoding === "base64" && typeof blob.content === "string") {
       return Buffer.from(blob.content, "base64").toString("utf-8");
     }
-    return null;
-  } catch {
-    return null;
+    blobErr = `unexpected blob response (encoding=${String(blob.encoding)}, content=${typeof blob.content})`;
+  } catch (err) {
+    blobErr = describeFetchError(err);
   }
+
+  logFetchFailure(path, contentsErr, blobErr);
+  return null;
+}
+
+function describeFetchError(err: unknown): string {
+  // Bun's $ throws a ShellError with stderr/stdout/exitCode fields. We want
+  // the stderr text (gh's error message) when available, otherwise fall back
+  // to the generic message. Keep it single-line so it logs cleanly.
+  if (typeof err === "object" && err !== null) {
+    const e = err as {
+      stderr?: unknown;
+      exitCode?: number;
+      message?: string;
+    };
+    const stderrBuf = e.stderr;
+    let stderrText = "";
+    if (typeof stderrBuf === "string") stderrText = stderrBuf;
+    else if (stderrBuf && typeof (stderrBuf as Buffer).toString === "function") {
+      stderrText = (stderrBuf as Buffer).toString("utf-8");
+    }
+    const trimmed = stderrText.trim().replace(/\s+/g, " ");
+    if (trimmed) return `exit ${e.exitCode ?? "?"}: ${trimmed}`;
+    if (e.message) return e.message;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
+function logFetchFailure(
+  path: string,
+  contentsErr: string | null,
+  blobErr: string | null,
+): void {
+  // Surface both error messages on stderr so a user looking at the pr-tour
+  // process output can see *what* gh actually said — the swallowed errors
+  // used to silently turn into "file content unavailable" warnings in the
+  // sidebar, with no diagnostic trail. Goes to stderr so it doesn't fight
+  // the LISTENING/submit sentinel lines the CLI prints to stdout.
+  const parts = [`pr-tour: fetchFileContent failed for "${path}"`];
+  if (contentsErr) parts.push(`  contents API: ${contentsErr}`);
+  if (blobErr) parts.push(`  blob API:     ${blobErr}`);
+  console.error(parts.join("\n"));
 }
