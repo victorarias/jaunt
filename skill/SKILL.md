@@ -307,13 +307,15 @@ pr-tour <pr-ref> --port 5174       # bind a specific port (see re-launch below)
 
 If `pr-tour` isn't on `$PATH`, fall back to `cd ~/projects/pr-tour && bun run start <pr-ref>` (same flags apply).
 
+**Always launch pr-tour as a backgrounded task.** pr-tour is a long-running server that only exits on submit (or Ctrl-C). A normal blocking Bash call will hang and you'll never see the URL to report — that's a dead end in both modes. Whatever your shell tool's "run in background" affordance is (e.g. `run_in_background: true`), use it. Both fire-and-forget and await-and-act-on-feedback background the same way; they only differ in what you do *after* the server is up.
+
 **Startup sentinel** — on bind, pr-tour prints:
 
 ```
 pr-tour: LISTENING port=5174 url=http://localhost:5174/
 ```
 
-Capture the `port=` value. You'll need it for the re-launch step below.
+Immediately after launching, tail the backgrounded task's output until you see that `LISTENING` line (a few seconds, tops). Extract `port=` and `url=` from it — **do not guess or assume the port** (Vite falls back to 5174, 5175, … if 5173 is taken; you'd report the wrong one). The URL you tell the user comes straight from the `url=` value. If you don't see `LISTENING` within ~10s, surface whatever error the output shows.
 
 **Submit sentinel + exit** — when the reviewer clicks Submit, pr-tour prints one of these and then exits `0`:
 
@@ -324,12 +326,14 @@ pr-tour: REVIEW_POSTED url=https://github.com/owner/repo/pull/123#...
 
 #### Spawn shape
 
-- **fire-and-forget**: spawn in the background. Report the URL. Done — the backgrounded process will exit on its own when the user submits; you don't need to do anything with that.
+Both modes: background the launch, tail for `LISTENING`, report the URL. After that:
 
-- **await-and-act-on-feedback**: spawn in the **foreground** and block on the process. When it exits:
-  1. If `~/.pr-tour/<owner>_<repo>_<num>.feedback.md` exists → read it and act on the feedback. After you're done, **re-launch on the same port**: `pr-tour <ref> --port <N>` where `<N>` is the port from the original `LISTENING` line. Tell the user the server's back up and to refresh their browser tab to see the updated code and leave follow-up comments.
-  2. If the feedback file doesn't exist → the user posted to GitHub directly (`REVIEW_POSTED` was printed instead). Acknowledge you saw the GitHub submission; no local action. Do not re-launch.
-  3. If the process is still running after a reasonable timeout → the user likely closed the browser without submitting. Kill the process, tell the user you stopped waiting, and ask if they still want something from you.
+- **fire-and-forget**: done. The backgrounded process will exit on its own when the user submits; you don't need to watch for it.
+
+- **await-and-act-on-feedback**: start watching the task output for a second sentinel — `FEEDBACK_READY` or `REVIEW_POSTED` — or for the process to exit. Use a monitor/watch tool if your environment has one; otherwise poll the output at a slow cadence (don't hot-loop — the user's review takes minutes). When it fires:
+  1. `FEEDBACK_READY`: read `~/.pr-tour/<owner>_<repo>_<num>.feedback.md`, act on the feedback. After you're done, **re-launch on the same port**: `pr-tour <ref> --port <N>` where `<N>` is the port from the original `LISTENING` line (again as a backgrounded task, again tail for the new `LISTENING`). Tell the user the server's back up and to refresh their browser tab to see the updated code and leave follow-up comments.
+  2. `REVIEW_POSTED`: user submitted to GitHub directly — acknowledge, no local action, do not re-launch.
+  3. Long silence (tens of minutes, no exit): the user probably closed the browser without submitting. Ask before killing — don't assume abandonment.
 
 The re-launch makes the loop feel continuous: same URL, user refreshes, drafts are fresh (they were cleared on submit), and the new process picks up whatever commits you just made.
 

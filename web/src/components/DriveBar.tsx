@@ -106,6 +106,7 @@ export function DriveBar({
               {reviewedCount}/{totalFiles}
             </span>
             <span className="kbd">S</span>
+            <span className="kbd">⌘↵</span>
           </>
         )}
       </button>
