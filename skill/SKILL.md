@@ -29,7 +29,7 @@ A single `.pr-tour-guide.yml` in the cwd, shape:
 ```yaml
 version: 1
 
-summary: |
+summary: >
   Two-to-four lines telling the reader the reading strategy —
   the "why" of this PR and where to start.
 
@@ -44,7 +44,7 @@ files:
         note: First-writer-wins. Everything else in the service assumes this holds.
 
   - path: server/internal/foo/model.go
-    note: |
+    note: >
       The aggregate. Start with the enums — the rest just switches on them.
     annotations:
       - anchor: "type Status"
@@ -65,6 +65,34 @@ skip:
   - `start: N, end: M` — inclusive line range
 
 Prefer `anchor` over exact line numbers — it's more stable against edits and you don't need to re-check line numbers if the file changes.
+
+### YAML authoring: `>` for prose, `|` for structure
+
+This bites often enough to deserve its own callout. When a `note:` or thread-item body is more than one line of prose, use a **folded** block (`>`), not a **literal** block (`|`):
+
+```yaml
+# Good: folded. Single newlines collapse to spaces; the reader sees one
+# flowing paragraph that the browser wraps to its own width.
+note: >
+  Went back and forth on retry-on-conflict — dropped it in the end
+  because it breaks idempotency when the caller's a webhook, and here
+  it almost always is.
+
+# Bad: literal. Every newline you typed becomes a visible <br> in the
+# rendered comment, so hard-wrapping at ~80 cols for YAML readability
+# leaks into the UI as a stack of short lines.
+note: |
+  Went back and forth on retry-on-conflict — dropped it in the end
+  because it breaks idempotency when the caller's a webhook, and here
+  it almost always is.
+```
+
+Rule of thumb:
+- **`>` (folded)** — prose. Wrap your YAML freely at ~80 cols for readability; the UI sees one paragraph. Use this for almost every multi-line `note:`, `summary:`, and thread item.
+- **`|` (literal)** — the linebreaks mean something. A bulleted list typed one-per-line, a short code block, ASCII art. Rare.
+- **Single-quoted or double-quoted string** — a short note that fits on one line. Simplest; no block scalar needed.
+
+Both `>` and `|` treat a blank line as a paragraph break — so `>` still lets you write multi-paragraph notes, you just use `\n\n` to separate paragraphs and let single newlines collapse to spaces.
 
 ## Voice
 
@@ -208,7 +236,7 @@ When a decision is likely to draw a "why not X?" reply, use `thread:` instead of
 - anchor: "func (s *Service) Resolve"
   thread:
     - "First-writer-wins lives here (INV-5). The CAS is what actually enforces it."
-    - |
+    - >
       Went back and forth on retry-on-conflict — dropped it in the end
       because it breaks idempotency when the caller's a webhook, and here
       it almost always is.
@@ -334,6 +362,7 @@ Tell the user, tersely:
 - Write a 20-line note on a 5-line change.
 - Skip reading the diff on a fresh session just because the file list looks familiar. File names ≠ content.
 - Pick ambiguous anchors and hope the first match is right. Verify, or lengthen.
+- Use `|` (literal block) for prose with hard-wrapped lines. The newlines render as visible `<br>`s in the comment bubble. Use `>` (folded) — see the YAML-authoring callout above.
 - Write your own YAML validator. Use `pr-tour validate` — it catches exactly what the app would silently misinterpret.
 - Overwrite an existing `.pr-tour-guide.yml` that has substantial content without asking.
 - Post the guide to GitHub — this skill is local-file only. (Posting to a pinned PR comment is a future feature.)
