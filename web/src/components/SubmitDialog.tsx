@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Draft, PRFile, SubmitTarget } from "../types.ts";
 import { fileStateOf } from "../hooks/useDraft.ts";
 import type { Verdict } from "../../../src/compose.ts";
@@ -36,8 +36,14 @@ type View =
 export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
   const [view, setView] = useState<View>({ kind: "form" });
   const [verdict, setVerdict] = useState<Verdict>("approve");
-  const [target, setTarget] = useState<SubmitTarget>("github");
+  const [target, setTarget] = useState<SubmitTarget>("agent");
   const [body, setBody] = useState(draft.overallBody);
+
+  // Ref tracking the latest handleSubmit so the window keydown listener (below)
+  // always calls the current-render version. A stale closure here silently
+  // submits with the defaults even after the user changed verdict/target via
+  // keyboard — the exact bug this ref prevents.
+  const handleSubmitRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -45,13 +51,11 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
         onClose();
         return;
       }
-      // ⌘/Ctrl+Enter submits from anywhere (textarea included).
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        if (view.kind === "form") void handleSubmit();
+        void handleSubmitRef.current();
         return;
       }
-      // Letter/number shortcuts: skip when the user is typing in a field.
       const tgt = e.target as HTMLElement | null;
       const typing =
         tgt &&
@@ -59,7 +63,6 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
           tgt.tagName === "TEXTAREA" ||
           tgt.isContentEditable);
       if (typing) return;
-      if (view.kind !== "form") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "1") {
         e.preventDefault();
@@ -77,10 +80,7 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // handleSubmit is defined below and depends on verdict/body/target, but
-    // the listener reads the latest via closure-on-rerender, not deps.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onClose, view.kind]);
+  }, [onClose]);
 
   const reviewedCount = files.reduce(
     (n, f) => n + (fileStateOf(draft, f.path).reviewed ? 1 : 0),
@@ -90,6 +90,7 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
   const pct = files.length > 0 ? (100 * reviewedCount) / files.length : 0;
 
   async function handleSubmit() {
+    if (view.kind !== "form") return;
     const snapshotReviewed = reviewedCount;
     const snapshotTotal = files.length;
     setView({ kind: "submitting" });
@@ -110,6 +111,8 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
       });
     }
   }
+
+  handleSubmitRef.current = handleSubmit;
 
   if (view.kind === "done") {
     const { outcome } = view;

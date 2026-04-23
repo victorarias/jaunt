@@ -210,7 +210,8 @@ describe("ui e2e — real browser round-trip", () => {
         const modal = fx.page.locator(".modal");
         await modal.waitFor({ state: "visible" });
 
-        // Toggle target to "back to agent".
+        // "back to agent" is the default target — click it anyway to verify
+        // the button is wired and the click is a no-op.
         await modal.locator(".seg.wide button").nth(1).click();
 
         // Submit (button label is "Send to agent →").
@@ -251,7 +252,7 @@ describe("ui e2e — real browser round-trip", () => {
   );
 
   test(
-    "GitHub path: default target + Post calls submitReviewComment with composed body, no feedback file",
+    "GitHub path: toggle off default agent, pick Comment verdict, Post → submitReviewComment called, no feedback file",
     async () => {
       const fx = await bootstrap();
       try {
@@ -261,10 +262,14 @@ describe("ui e2e — real browser round-trip", () => {
           .locator("#stop-1")
           .waitFor({ state: "visible", timeout: 5_000 });
 
-        // Open submit with GitHub as the default target.
+        // Open submit — default target is now "back to agent", so we have to
+        // actively flip to GitHub.
         await fx.page.locator(".submit-review").click();
         const modal = fx.page.locator(".modal");
         await modal.waitFor({ state: "visible" });
+
+        // Click the GitHub button explicitly.
+        await modal.locator(".seg.wide button").nth(0).click();
 
         // Pick the "Comment" verdict (second verdict button).
         await modal.locator(".verdict-btn").nth(1).click();
@@ -289,6 +294,115 @@ describe("ui e2e — real browser round-trip", () => {
         // No feedback file on disk.
         const path = feedbackPath(sampleRef, fx.dir);
         await expect(access(path)).rejects.toThrow();
+
+        expect(fx.pageErrors).toEqual([]);
+        expect(fx.consoleErrors).toEqual([]);
+      } finally {
+        await fx.cleanup();
+      }
+    },
+    90_000,
+  );
+
+  test(
+    "keyboard-only: T + digit verdict + Meta+Enter honors the keyboard-selected state",
+    async () => {
+      // Regression guard for a stale-closure bug: the submit dialog's window
+      // keydown listener used to capture handleSubmit once and reuse it
+      // forever, so keyboard-driven T / digit changes updated the UI but the
+      // eventual Meta+Enter still submitted with the *original* defaults.
+      // Exercise the bug path end-to-end: default (agent + approve) →
+      // keyboard-flip to (github + request_changes) → submit → assert
+      // GitHub got the Request-changes body, not the agent feedback file.
+      const fx = await bootstrap();
+      try {
+        // Focus somewhere non-input so the 's' shortcut fires.
+        await fx.page.locator("main").click();
+
+        // Open submit via keyboard.
+        await fx.page.keyboard.press("s");
+        const modal = fx.page.locator(".modal");
+        await modal.waitFor({ state: "visible", timeout: 5_000 });
+
+        // Sanity-check defaults: agent target active, approve verdict active.
+        const segButtons = modal.locator(".seg.wide button");
+        const verdictButtons = modal.locator(".verdict-btn");
+        expect(await segButtons.nth(1).getAttribute("class")).toContain(
+          "active",
+        );
+        expect(await verdictButtons.nth(0).getAttribute("class")).toContain(
+          "active",
+        );
+
+        // Keyboard: T flips target → github.
+        await fx.page.keyboard.press("t");
+        expect(await segButtons.nth(0).getAttribute("class")).toContain(
+          "active",
+        );
+        expect(await segButtons.nth(1).getAttribute("class")).not.toContain(
+          "active",
+        );
+
+        // Keyboard: 3 picks request_changes.
+        await fx.page.keyboard.press("3");
+        expect(await verdictButtons.nth(2).getAttribute("class")).toContain(
+          "active",
+        );
+
+        // Submit via Meta+Enter — this is where the stale closure used to
+        // silently revert to (agent, approve).
+        await fx.page.keyboard.press("Meta+Enter");
+
+        const success = fx.page.locator(".modal.success");
+        await success.waitFor({ state: "visible", timeout: 10_000 });
+        expect(await textOf(success.locator(".modal-head"))).toContain(
+          "Review submitted",
+        );
+
+        // GitHub mock got exactly one call with Request-changes body.
+        expect(fx.github.submitCalls).toHaveLength(1);
+        expect(
+          fx.github.submitCalls[0]!.body.startsWith("**Request changes**"),
+        ).toBe(true);
+
+        // No feedback file — the keyboard-selected target (github) was
+        // actually honored.
+        const fbPath = feedbackPath(sampleRef, fx.dir);
+        await expect(access(fbPath)).rejects.toThrow();
+
+        expect(fx.pageErrors).toEqual([]);
+        expect(fx.consoleErrors).toEqual([]);
+      } finally {
+        await fx.cleanup();
+      }
+    },
+    90_000,
+  );
+
+  test(
+    "Meta+Enter from inside a textarea opens the submit dialog",
+    async () => {
+      const fx = await bootstrap();
+      try {
+        // Advance to stop 1 so a reply textarea exists.
+        await fx.page.locator(".drive .next").click();
+        await fx.page
+          .locator("#stop-1")
+          .waitFor({ state: "visible", timeout: 5_000 });
+
+        // Focus a textarea and type into it.
+        const reply = fx.page.locator("#stop-1 .thread-reply textarea");
+        await reply.click();
+        await reply.type("hi");
+        expect(
+          await fx.page.evaluate(() => document.activeElement?.tagName),
+        ).toBe("TEXTAREA");
+
+        // Meta+Enter from inside the textarea opens submit.
+        await fx.page.keyboard.press("Meta+Enter");
+        await fx.page
+          .locator(".modal")
+          .waitFor({ state: "visible", timeout: 5_000 });
 
         expect(fx.pageErrors).toEqual([]);
         expect(fx.consoleErrors).toEqual([]);

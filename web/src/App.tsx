@@ -199,6 +199,18 @@ function Review({ pr }: { pr: PRPayload }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (submitOpen) return;
+      // Cmd/Ctrl+Enter from anywhere (textareas included) opens the submit
+      // dialog — so reviewers can hit "send it" right after typing a comment
+      // without having to blur out first.
+      if (
+        e.key === "Enter" &&
+        (e.metaKey || e.ctrlKey) &&
+        files.length > 0
+      ) {
+        e.preventDefault();
+        openSubmit();
+        return;
+      }
       const tgt = e.target as HTMLElement | null;
       if (
         tgt &&
