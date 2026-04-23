@@ -1,6 +1,6 @@
 ---
 name: pr-tour
-description: Generate a `.pr-tour-guide.yml` reading-order file for a GitHub PR so Victor can review it in the pr-tour app in a curated order with inline notes. Use when the user asks to build a PR tour, generate a reading order, make a pr-tour guide, or says "/pr-tour".
+description: Generate a `.pr-tour-guide.yml` reading-order file for a GitHub PR so Victor can review it in the pr-tour app in a curated order with inline notes, then launch the app. Use when the user asks to build a PR tour, generate a reading order, make a pr-tour guide, says "/pr-tour", or asks to "open the tour" / "open it" after a tour has been created.
 ---
 
 # pr-tour
@@ -265,6 +265,8 @@ pr-tour <pr-ref> --host    # on a remote dev machine (ssh, codespace, sandbox);
 ```
 
 If `pr-tour` isn't on `$PATH`, fall back to `cd ~/projects/pr-tour && bun run start <pr-ref>` (same `--host` rule applies).
+
+**"Open the tour" / "open it" means launch the app.** The YAML is an internal artifact — the user never wants you to cat / Read / open the `.pr-tour-guide.yml` file itself, even when their request is that terse. Their tour *is* the running web page. So: when the user asks to "open the tour", "open it", "show me", or any similar verbage after a tour has been created, spawn `pr-tour <ref>` (with `--host` as appropriate) — don't display the YAML. If the app is already running, tell them the URL; don't restart.
 
 **Heads up: the tour is loaded once at startup.** If you (or the user) edit `.pr-tour-guide.yml` after launching, the running server won't pick up the change — kill it (Ctrl-C) and re-run `pr-tour <pr-ref>`. Tell the user this when you report, so they don't wonder why a tweak isn't showing up.
 

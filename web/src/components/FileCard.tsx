@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { Draft, PRFile } from "../types.ts";
 import { fileStateOf } from "../hooks/useDraft.ts";
 import { DiffView } from "./DiffView.tsx";
@@ -16,7 +17,7 @@ type Props = {
   onSetLineComment: (path: string, line: number, text: string) => void;
 };
 
-export function FileCard({
+function FileCardImpl({
   file,
   stopNum,
   draft,
@@ -120,3 +121,22 @@ export function FileCard({
     </div>
   );
 }
+
+// Typing in file X's comment mutates draft.fileStates[X] but leaves every
+// other file's slice unchanged. A custom comparator lets the other 37
+// FileCards skip re-rendering on each keystroke — otherwise the whole
+// file map churns and typing feels laggy on remote dev machines.
+export const FileCard = memo(FileCardImpl, (prev, next) => {
+  return (
+    prev.file === next.file &&
+    prev.stopNum === next.stopNum &&
+    prev.highlighter === next.highlighter &&
+    prev.isActive === next.isActive &&
+    prev.onToggleReviewed === next.onToggleReviewed &&
+    prev.onNoteChange === next.onNoteChange &&
+    prev.onSetReply === next.onSetReply &&
+    prev.onSetLineComment === next.onSetLineComment &&
+    prev.draft.fileStates[prev.file.path] ===
+      next.draft.fileStates[next.file.path]
+  );
+});

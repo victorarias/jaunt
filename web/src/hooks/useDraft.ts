@@ -30,9 +30,11 @@ export function useDraft(ref: PRRef | null) {
       const toSave = latestDraft.current;
       if (!toSave) return;
       try {
-        const saved = await saveDraft(toSave);
-        latestDraft.current = saved;
-        setDraft(saved);
+        await saveDraft(toSave);
+        // Intentionally do NOT setDraft(saved) / reassign latestDraft.current.
+        // The server echo is stale by the time it arrives (the user may have
+        // kept typing during the save round-trip), and nothing in the UI
+        // reads updatedAt — so merging it back would only clobber keystrokes.
         setStatus("saved");
       } catch {
         setStatus("error");
