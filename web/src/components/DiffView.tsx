@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { BundledLanguage, ThemedToken } from "shiki";
 import type { Annotation, DiffHunk, DiffLine, PRFile } from "../types.ts";
 import {
@@ -6,6 +6,7 @@ import {
   resolveLang,
   type Highlighter,
 } from "../hooks/useHighlighter.ts";
+import { useLineCommentForm } from "../hooks/useLineCommentForm.ts";
 import { Thread } from "./Thread.tsx";
 import { UserLineComment } from "./UserLineComment.tsx";
 
@@ -66,27 +67,8 @@ export function DiffView({
     () => assignAnnotationsToLines(file),
     [file],
   );
-  const [openLines, setOpenLines] = useState<Set<number>>(new Set());
-  const openLine = useCallback((n: number) => {
-    setOpenLines((s) => {
-      if (s.has(n)) return s;
-      const next = new Set(s);
-      next.add(n);
-      return next;
-    });
-  }, []);
-  const closeLine = useCallback(
-    (n: number) => {
-      setOpenLines((s) => {
-        if (!s.has(n)) return s;
-        const next = new Set(s);
-        next.delete(n);
-        return next;
-      });
-      onSetLineComment(n, "");
-    },
-    [onSetLineComment],
-  );
+  const { openLines, openLine, closeLine } =
+    useLineCommentForm(onSetLineComment);
 
   if (file.hunks.length === 0) {
     return (

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Draft, PRFile, SubmitTarget } from "../types.ts";
 import { fileStateOf } from "../hooks/useDraft.ts";
+import { isTypingInField } from "../lib/dom.ts";
 import type { Verdict } from "../../../src/compose.ts";
 
 export type { Verdict };
@@ -56,13 +57,7 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
         void handleSubmitRef.current();
         return;
       }
-      const tgt = e.target as HTMLElement | null;
-      const typing =
-        tgt &&
-        (tgt.tagName === "INPUT" ||
-          tgt.tagName === "TEXTAREA" ||
-          tgt.isContentEditable);
-      if (typing) return;
+      if (isTypingInField(e.target)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "1") {
         e.preventDefault();
@@ -112,6 +107,9 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
     }
   }
 
+  // Assigned during render on purpose — the window keydown listener reads this
+  // ref, and we need the latest handleSubmit available without re-subscribing
+  // the listener on every render. Do not move this into useEffect.
   handleSubmitRef.current = handleSubmit;
 
   if (view.kind === "done") {

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchPR, submitReview } from "./api.ts";
-import type { PRFile, PRPayload, PRRef, SubmitTarget } from "./types.ts";
+import type { PRPayload, SubmitTarget } from "./types.ts";
 import { composeReviewBody, type Verdict } from "../../src/compose.ts";
 import { fileStateOf, useDraft } from "./hooks/useDraft.ts";
 import { useHighlighter } from "./hooks/useHighlighter.ts";
+import { useTourNavigation } from "./hooks/useTourNavigation.ts";
+import { isTypingInField } from "./lib/dom.ts";
 import { TopBar } from "./components/TopBar.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { SummaryCard } from "./components/SummaryCard.tsx";
@@ -49,14 +51,6 @@ export function App() {
   return <Review pr={state.pr} />;
 }
 
-function stopStorageKey(ref: PRRef) {
-  return `pr-tour:stop:${ref.owner}/${ref.repo}#${ref.number}`;
-}
-
-function clamp(n: number, lo: number, hi: number) {
-  return Math.max(lo, Math.min(hi, n));
-}
-
 function Review({ pr }: { pr: PRPayload }) {
   const highlighter = useHighlighter();
   const {
@@ -71,20 +65,8 @@ function Review({ pr }: { pr: PRPayload }) {
   } = useDraft(pr.meta.ref);
 
   const files = pr.files;
-  const totalStops = files.length + 1;
-
-  const stopKey = stopStorageKey(pr.meta.ref);
-  const [currentStop, setCurrentStop] = useState<number>(() => {
-    const raw = window.localStorage.getItem(stopKey);
-    const n = raw == null ? 0 : parseInt(raw, 10);
-    return Number.isFinite(n) ? clamp(n, 0, Math.max(0, totalStops - 1)) : 0;
-  });
   const [submitOpen, setSubmitOpen] = useState(false);
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
-
-  useEffect(() => {
-    window.localStorage.setItem(stopKey, String(currentStop));
-  }, [currentStop, stopKey]);
 
   const mainRef = useRef<HTMLDivElement>(null);
 
@@ -103,99 +85,16 @@ function Review({ pr }: { pr: PRPayload }) {
     });
   }, []);
 
-  // Flat list of (fileIndex, annIdx) in file-then-line order — the sequence
-  // we iterate through when the user presses n/p.
-  const flatAnns = useMemo(() => {
-    const out: { fileIndex: number; annIdx: number }[] = [];
-    files.forEach((f, fi) => {
-      f.annotations.forEach((_, ai) => {
-        out.push({ fileIndex: fi, annIdx: ai });
-      });
-    });
-    return out;
-  }, [files]);
-  const [annCursor, setAnnCursor] = useState<number>(-1);
-
-  const jumpTo = useCallback(
-    (stop: number) => {
-      const nextStop = clamp(stop, 0, totalStops - 1);
-      setCurrentStop(nextStop);
-      setAnnCursor(-1);
-      scrollToId(`stop-${nextStop}`);
-    },
-    [scrollToId, totalStops],
-  );
-
-  // Used by both "next step" and "jump to annotation in another file" — mark
-  // the file we're leaving as reviewed, matching the j-key side-effect.
-  const markCurrentReviewedOnLeave = useCallback(() => {
-    if (currentStop > 0 && draft) {
-      const f = files[currentStop - 1];
-      if (f && !fileStateOf(draft, f.path).reviewed) {
-        toggleReviewed(f.path);
-      }
-    }
-  }, [currentStop, files, draft, toggleReviewed]);
-
-  const next = useCallback(() => {
-    if (currentStop < totalStops - 1) {
-      markCurrentReviewedOnLeave();
-      jumpTo(currentStop + 1);
-    }
-  }, [currentStop, totalStops, markCurrentReviewedOnLeave, jumpTo]);
-
-  const prev = useCallback(() => {
-    if (currentStop > 0) jumpTo(currentStop - 1);
-  }, [currentStop, jumpTo]);
-
-  const currentFile: PRFile | null =
-    currentStop > 0 ? (files[currentStop - 1] ?? null) : null;
-
-  const toggleCurrentReviewed = useCallback(() => {
-    if (currentFile) toggleReviewed(currentFile.path);
-  }, [currentFile, toggleReviewed]);
-
-  const gotoAnnotation = useCallback(
-    (delta: 1 | -1) => {
-      if (flatAnns.length === 0) return;
-      let target = annCursor + delta;
-      if (annCursor === -1) {
-        // Cursor was reset (e.g., by jumpTo). Seek relative to currentStop.
-        const here = currentStop === 0 ? -1 : currentStop - 1;
-        if (delta === 1) {
-          target = flatAnns.findIndex((a) => a.fileIndex >= here);
-        } else {
-          target = -1;
-          for (let i = flatAnns.length - 1; i >= 0; i--) {
-            if (flatAnns[i]!.fileIndex <= here) {
-              target = i;
-              break;
-            }
-          }
-        }
-      }
-      if (target < 0 || target >= flatAnns.length) return;
-      const ann = flatAnns[target]!;
-      const targetStop = ann.fileIndex + 1;
-      if (targetStop !== currentStop) {
-        markCurrentReviewedOnLeave();
-        setCurrentStop(targetStop);
-      }
-      setAnnCursor(target);
-      scrollToId(`ann-${ann.fileIndex}-${ann.annIdx}`);
-    },
-    [
-      flatAnns,
-      annCursor,
-      currentStop,
-      markCurrentReviewedOnLeave,
-      scrollToId,
-    ],
-  );
+  const nav = useTourNavigation({
+    ref: pr.meta.ref,
+    files,
+    draft,
+    toggleReviewed,
+    scrollToId,
+  });
 
   const openSubmit = useCallback(() => setSubmitOpen(true), []);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (submitOpen) return;
@@ -211,31 +110,23 @@ function Review({ pr }: { pr: PRPayload }) {
         openSubmit();
         return;
       }
-      const tgt = e.target as HTMLElement | null;
-      if (
-        tgt &&
-        (tgt.tagName === "INPUT" ||
-          tgt.tagName === "TEXTAREA" ||
-          tgt.isContentEditable)
-      ) {
-        return;
-      }
+      if (isTypingInField(e.target)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "j" || e.key === "ArrowRight") {
         e.preventDefault();
-        next();
+        nav.next();
       } else if (e.key === "k" || e.key === "ArrowLeft") {
         e.preventDefault();
-        prev();
-      } else if (e.key === "r" && currentFile) {
+        nav.prev();
+      } else if (e.key === "r" && nav.currentFile) {
         e.preventDefault();
-        toggleCurrentReviewed();
+        nav.toggleCurrentReviewed();
       } else if (e.key === "n") {
         e.preventDefault();
-        gotoAnnotation(1);
+        nav.gotoAnnotation(1);
       } else if (e.key === "p") {
         e.preventDefault();
-        gotoAnnotation(-1);
+        nav.gotoAnnotation(-1);
       } else if (e.key === "s" && files.length > 0) {
         e.preventDefault();
         openSubmit();
@@ -244,11 +135,11 @@ function Review({ pr }: { pr: PRPayload }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [
-    next,
-    prev,
-    currentFile,
-    toggleCurrentReviewed,
-    gotoAnnotation,
+    nav.next,
+    nav.prev,
+    nav.currentFile,
+    nav.toggleCurrentReviewed,
+    nav.gotoAnnotation,
     openSubmit,
     submitOpen,
     files.length,
@@ -283,11 +174,11 @@ function Review({ pr }: { pr: PRPayload }) {
   }
 
   const stopLabel =
-    currentStop === 0
+    nav.currentStop === 0
       ? "PR summary"
-      : (files[currentStop - 1]?.path ?? "—");
-  const currentReviewed = currentFile
-    ? fileStateOf(draft, currentFile.path).reviewed
+      : (files[nav.currentStop - 1]?.path ?? "—");
+  const currentReviewed = nav.currentFile
+    ? fileStateOf(draft, nav.currentFile.path).reviewed
     : false;
 
   return (
@@ -303,8 +194,8 @@ function Review({ pr }: { pr: PRPayload }) {
         files={files}
         tour={pr.tour}
         draft={draft}
-        currentStop={currentStop}
-        onJump={jumpTo}
+        currentStop={nav.currentStop}
+        onJump={nav.jumpTo}
         overallBody={draft.overallBody}
         onOverallBodyChange={setOverallBody}
       />
@@ -320,7 +211,7 @@ function Review({ pr }: { pr: PRPayload }) {
               stopNum={i + 1}
               draft={draft}
               highlighter={highlighter}
-              isActive={currentStop === i + 1}
+              isActive={nav.currentStop === i + 1}
               onToggleReviewed={toggleReviewed}
               onNoteChange={setFileNote}
               onSetReply={setAnnotationReply}
@@ -348,22 +239,22 @@ function Review({ pr }: { pr: PRPayload }) {
       </main>
 
       <DriveBar
-        currentStop={currentStop}
-        totalStops={totalStops}
+        currentStop={nav.currentStop}
+        totalStops={nav.totalStops}
         stopLabel={stopLabel}
-        canMarkReviewed={!!currentFile}
+        canMarkReviewed={!!nav.currentFile}
         currentReviewed={currentReviewed}
         reviewedCount={reviewedCount}
         totalFiles={files.length}
         reviewSubmitted={reviewSubmitted}
-        hasAnnotations={flatAnns.length > 0}
-        canPrevAnn={flatAnns.length > 0}
-        canNextAnn={flatAnns.length > 0}
-        onPrev={prev}
-        onNext={next}
-        onPrevAnn={() => gotoAnnotation(-1)}
-        onNextAnn={() => gotoAnnotation(1)}
-        onToggleReviewed={toggleCurrentReviewed}
+        hasAnnotations={nav.flatAnns.length > 0}
+        canPrevAnn={nav.canPrevAnn}
+        canNextAnn={nav.canNextAnn}
+        onPrev={nav.prev}
+        onNext={nav.next}
+        onPrevAnn={() => nav.gotoAnnotation(-1)}
+        onNextAnn={() => nav.gotoAnnotation(1)}
+        onToggleReviewed={nav.toggleCurrentReviewed}
         onOpenSubmit={openSubmit}
       />
 
@@ -378,4 +269,3 @@ function Review({ pr }: { pr: PRPayload }) {
     </div>
   );
 }
-

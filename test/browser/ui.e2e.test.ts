@@ -148,6 +148,11 @@ async function textOf(locator: Locator): Promise<string> {
   return (await locator.textContent()) ?? "";
 }
 
+async function hasClass(locator: Locator, cls: string): Promise<boolean> {
+  const classes = (await locator.getAttribute("class")) ?? "";
+  return classes.split(/\s+/).includes(cls);
+}
+
 describe("ui e2e — real browser round-trip", () => {
   test(
     "tour → thread reply → file note → submit to agent writes feedback file",
@@ -327,27 +332,17 @@ describe("ui e2e — real browser round-trip", () => {
         // Sanity-check defaults: agent target active, approve verdict active.
         const segButtons = modal.locator(".seg.wide button");
         const verdictButtons = modal.locator(".verdict-btn");
-        expect(await segButtons.nth(1).getAttribute("class")).toContain(
-          "active",
-        );
-        expect(await verdictButtons.nth(0).getAttribute("class")).toContain(
-          "active",
-        );
+        expect(await hasClass(segButtons.nth(1), "active")).toBe(true);
+        expect(await hasClass(verdictButtons.nth(0), "active")).toBe(true);
 
         // Keyboard: T flips target → github.
         await fx.page.keyboard.press("t");
-        expect(await segButtons.nth(0).getAttribute("class")).toContain(
-          "active",
-        );
-        expect(await segButtons.nth(1).getAttribute("class")).not.toContain(
-          "active",
-        );
+        expect(await hasClass(segButtons.nth(0), "active")).toBe(true);
+        expect(await hasClass(segButtons.nth(1), "active")).toBe(false);
 
         // Keyboard: 3 picks request_changes.
         await fx.page.keyboard.press("3");
-        expect(await verdictButtons.nth(2).getAttribute("class")).toContain(
-          "active",
-        );
+        expect(await hasClass(verdictButtons.nth(2), "active")).toBe(true);
 
         // Submit via Meta+Enter — this is where the stale closure used to
         // silently revert to (agent, approve).
