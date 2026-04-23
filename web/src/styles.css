@@ -512,6 +512,13 @@ a:hover {
   border-color: var(--border-strong);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
 }
+.file-card.collapsed .file-head {
+  border-bottom: none;
+}
+.chip.collapsed-hint {
+  color: var(--fg-dimmer);
+  border-style: dashed;
+}
 
 .file-head {
   display: grid;

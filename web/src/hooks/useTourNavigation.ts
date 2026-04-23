@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Draft, PRFile, PRRef } from "../types.ts";
 import { fileStateOf } from "./useDraft.ts";
 
@@ -10,13 +10,11 @@ function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
 }
 
-type FlatAnn = { fileIndex: number; annIdx: number };
-
 export type TourNavigation = {
   currentStop: number;
   totalStops: number;
   currentFile: PRFile | null;
-  flatAnns: FlatAnn[];
+  hasAnyAnnotations: boolean;
   canPrevAnn: boolean;
   canNextAnn: boolean;
   jumpTo: (stop: number) => void;
@@ -24,16 +22,24 @@ export type TourNavigation = {
   next: () => void;
   gotoAnnotation: (delta: 1 | -1) => void;
   toggleCurrentReviewed: () => void;
+  isCollapsed: (path: string) => boolean;
+  setCollapsed: (path: string, val: boolean) => void;
+  toggleCollapsed: (path: string) => void;
+  collapseCurrent: () => void;
+  expandCurrent: () => void;
 };
 
 /**
  * Owns cursor state for the tour: which stop we're on (stop 0 = PR summary,
- * stop N = files[N-1]) plus a secondary annotation cursor for n/p navigation.
+ * stop N = files[N-1]) plus a per-current-file annotation cursor for n/p.
  * Persists currentStop to localStorage keyed by PR. Calls scrollToId after
  * every move so the caller doesn't have to orchestrate scroll separately.
  *
- * Both `next()` and cross-file `gotoAnnotation()` auto-mark the file we're
- * leaving as reviewed, matching the J keyboard shortcut's side-effect.
+ * Annotation navigation is intentionally scoped to the current file — n/p
+ * never cross files. That keeps reviewers from jumping away without
+ * realizing. Collapse state (file hidden below the header) is seeded from
+ * the draft's reviewed set when the draft first loads so a reload of a
+ * half-reviewed tour collapses the already-walked files.
  */
 export function useTourNavigation(opts: {
   ref: PRRef;
@@ -56,16 +62,44 @@ export function useTourNavigation(opts: {
     window.localStorage.setItem(storageKey, String(currentStop));
   }, [currentStop, storageKey]);
 
-  const flatAnns = useMemo<FlatAnn[]>(() => {
-    const out: FlatAnn[] = [];
-    files.forEach((f, fi) => {
-      f.annotations.forEach((_, ai) => {
-        out.push({ fileIndex: fi, annIdx: ai });
-      });
-    });
-    return out;
-  }, [files]);
   const [annCursor, setAnnCursor] = useState<number>(-1);
+
+  const [collapsed, setCollapsedSet] = useState<Set<string>>(new Set());
+  const seededCollapse = useRef(false);
+  useEffect(() => {
+    if (!draft || seededCollapse.current) return;
+    seededCollapse.current = true;
+    const initial = new Set<string>();
+    for (const f of files) {
+      if (fileStateOf(draft, f.path).reviewed) initial.add(f.path);
+    }
+    setCollapsedSet(initial);
+  }, [draft, files]);
+
+  const setCollapsed = useCallback((path: string, val: boolean) => {
+    setCollapsedSet((prev) => {
+      const has = prev.has(path);
+      if (val === has) return prev;
+      const next = new Set(prev);
+      if (val) next.add(path);
+      else next.delete(path);
+      return next;
+    });
+  }, []);
+
+  const toggleCollapsed = useCallback((path: string) => {
+    setCollapsedSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  const isCollapsed = useCallback(
+    (path: string) => collapsed.has(path),
+    [collapsed],
+  );
 
   const jumpTo = useCallback(
     (stop: number) => {
@@ -88,10 +122,19 @@ export function useTourNavigation(opts: {
 
   const next = useCallback(() => {
     if (currentStop < totalStops - 1) {
+      const leaving = currentStop > 0 ? files[currentStop - 1] : null;
       markCurrentReviewedOnLeave();
+      if (leaving) setCollapsed(leaving.path, true);
       jumpTo(currentStop + 1);
     }
-  }, [currentStop, totalStops, markCurrentReviewedOnLeave, jumpTo]);
+  }, [
+    currentStop,
+    files,
+    totalStops,
+    markCurrentReviewedOnLeave,
+    setCollapsed,
+    jumpTo,
+  ]);
 
   const prev = useCallback(() => {
     if (currentStop > 0) jumpTo(currentStop - 1);
@@ -100,53 +143,75 @@ export function useTourNavigation(opts: {
   const currentFile: PRFile | null =
     currentStop > 0 ? (files[currentStop - 1] ?? null) : null;
 
+  const currentAnnotations = currentFile?.annotations ?? [];
+
   const toggleCurrentReviewed = useCallback(() => {
     if (currentFile) toggleReviewed(currentFile.path);
   }, [currentFile, toggleReviewed]);
 
+  const collapseCurrent = useCallback(() => {
+    if (currentFile) setCollapsed(currentFile.path, true);
+  }, [currentFile, setCollapsed]);
+
+  const expandCurrent = useCallback(() => {
+    if (currentFile) setCollapsed(currentFile.path, false);
+  }, [currentFile, setCollapsed]);
+
   const gotoAnnotation = useCallback(
     (delta: 1 | -1) => {
-      if (flatAnns.length === 0) return;
-      let target = annCursor + delta;
+      if (!currentFile || currentAnnotations.length === 0) return;
+      const last = currentAnnotations.length - 1;
+      let target: number;
       if (annCursor === -1) {
-        // Cursor was reset (e.g., by jumpTo). Seek relative to currentStop.
-        const here = currentStop === 0 ? -1 : currentStop - 1;
-        if (delta === 1) {
-          target = flatAnns.findIndex((a) => a.fileIndex >= here);
-        } else {
-          target = -1;
-          for (let i = flatAnns.length - 1; i >= 0; i--) {
-            if (flatAnns[i]!.fileIndex <= here) {
-              target = i;
-              break;
-            }
-          }
-        }
+        target = delta === 1 ? 0 : last;
+      } else {
+        target = annCursor + delta;
       }
-      if (target < 0 || target >= flatAnns.length) return;
-      const ann = flatAnns[target]!;
-      const targetStop = ann.fileIndex + 1;
-      if (targetStop !== currentStop) {
-        markCurrentReviewedOnLeave();
-        setCurrentStop(targetStop);
-      }
+      if (target < 0 || target > last) return;
+      // Expand the file so the annotation is actually visible — otherwise
+      // we'd scroll to an id rendered inside a hidden block.
+      setCollapsed(currentFile.path, false);
       setAnnCursor(target);
-      scrollToId(`ann-${ann.fileIndex}-${ann.annIdx}`);
+      const fileIndex = currentStop - 1;
+      scrollToId(`ann-${fileIndex}-${target}`);
     },
-    [flatAnns, annCursor, currentStop, markCurrentReviewedOnLeave, scrollToId],
+    [
+      currentFile,
+      currentAnnotations.length,
+      annCursor,
+      currentStop,
+      scrollToId,
+      setCollapsed,
+    ],
   );
+
+  const hasAnyAnnotations = useMemo(
+    () => files.some((f) => f.annotations.length > 0),
+    [files],
+  );
+
+  const canPrevAnn =
+    currentAnnotations.length > 0 && annCursor > 0;
+  const canNextAnn =
+    currentAnnotations.length > 0 &&
+    annCursor < currentAnnotations.length - 1;
 
   return {
     currentStop,
     totalStops,
     currentFile,
-    flatAnns,
-    canPrevAnn: flatAnns.length > 0,
-    canNextAnn: flatAnns.length > 0,
+    hasAnyAnnotations,
+    canPrevAnn,
+    canNextAnn,
     jumpTo,
     prev,
     next,
     gotoAnnotation,
     toggleCurrentReviewed,
+    isCollapsed,
+    setCollapsed,
+    toggleCollapsed,
+    collapseCurrent,
+    expandCurrent,
   };
 }

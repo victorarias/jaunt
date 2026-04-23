@@ -124,19 +124,25 @@ function Review({
       }
       if (isTypingInField(e.target)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "j" || e.key === "ArrowRight") {
+      if (e.key === "j") {
         e.preventDefault();
         nav.next();
-      } else if (e.key === "k" || e.key === "ArrowLeft") {
+      } else if (e.key === "k") {
         e.preventDefault();
         nav.prev();
+      } else if (e.key === "ArrowRight" && nav.currentFile) {
+        e.preventDefault();
+        nav.expandCurrent();
+      } else if (e.key === "ArrowLeft" && nav.currentFile) {
+        e.preventDefault();
+        nav.collapseCurrent();
       } else if (e.key === "r" && nav.currentFile) {
         e.preventDefault();
         nav.toggleCurrentReviewed();
-      } else if (e.key === "n") {
+      } else if (e.key === "n" && nav.canNextAnn) {
         e.preventDefault();
         nav.gotoAnnotation(1);
-      } else if (e.key === "p") {
+      } else if (e.key === "p" && nav.canPrevAnn) {
         e.preventDefault();
         nav.gotoAnnotation(-1);
       } else if (e.key === "s" && files.length > 0) {
@@ -152,6 +158,10 @@ function Review({
     nav.currentFile,
     nav.toggleCurrentReviewed,
     nav.gotoAnnotation,
+    nav.expandCurrent,
+    nav.collapseCurrent,
+    nav.canNextAnn,
+    nav.canPrevAnn,
     openSubmit,
     submitOpen,
     files.length,
@@ -233,6 +243,8 @@ function Review({
               draft={draft}
               highlighter={highlighter}
               isActive={nav.currentStop === i + 1}
+              collapsed={nav.isCollapsed(f.path)}
+              onToggleCollapsed={nav.toggleCollapsed}
               onToggleReviewed={toggleReviewed}
               onNoteChange={setFileNote}
               onSetReply={setAnnotationReply}
@@ -268,7 +280,7 @@ function Review({
         reviewedCount={reviewedCount}
         totalFiles={files.length}
         reviewSubmitted={reviewSubmitted}
-        hasAnnotations={nav.flatAnns.length > 0}
+        hasAnnotations={nav.hasAnyAnnotations}
         canPrevAnn={nav.canPrevAnn}
         canNextAnn={nav.canNextAnn}
         onPrev={nav.prev}

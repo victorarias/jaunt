@@ -12,6 +12,8 @@ type Props = {
   draft: Draft;
   highlighter: Highlighter | null;
   isActive: boolean;
+  collapsed: boolean;
+  onToggleCollapsed: (path: string) => void;
   onToggleReviewed: (path: string) => void;
   onNoteChange: (path: string, note: string) => void;
   onSetReply: (path: string, annotationIdx: number, text: string) => void;
@@ -25,6 +27,8 @@ function FileCardImpl({
   draft,
   highlighter,
   isActive,
+  collapsed,
+  onToggleCollapsed,
   onToggleReviewed,
   onNoteChange,
   onSetReply,
@@ -43,7 +47,7 @@ function FileCardImpl({
   return (
     <div
       id={`stop-${stopNum}`}
-      className={`file-card ${isActive ? "active" : ""} ${deemph ? "deemph" : ""}`}
+      className={`file-card ${isActive ? "active" : ""} ${deemph ? "deemph" : ""} ${collapsed ? "collapsed" : ""}`}
     >
       <div className="file-head">
         <span className="stop">#{String(stopNum).padStart(2, "0")}</span>
@@ -67,9 +71,23 @@ function FileCardImpl({
               </span>
             )}
             {file.binary && <span className="chip">binary</span>}
+            {collapsed && (
+              <span className="chip collapsed-hint" title="Press → to expand">
+                collapsed
+              </span>
+            )}
           </div>
         </div>
         <div className="actions">
+          <button
+            type="button"
+            className="btn sm ghost"
+            onClick={() => onToggleCollapsed(file.path)}
+            title={collapsed ? "Expand (→)" : "Collapse (←)"}
+            aria-label={collapsed ? "Expand file" : "Collapse file"}
+          >
+            {collapsed ? "▸" : "▾"}
+          </button>
           <button
             type="button"
             className={`btn sm ${reviewed ? "reviewed" : ""}`}
@@ -80,7 +98,7 @@ function FileCardImpl({
         </div>
       </div>
 
-      {file.tourNote && (
+      {!collapsed && file.tourNote && (
         <div className="file-summary">
           <div className="attrib">
             <span className="dot" />
@@ -90,38 +108,41 @@ function FileCardImpl({
         </div>
       )}
 
-      {file.view === "content" ? (
-        <ContentView
-          file={file}
-          fileIndex={fileIndex}
-          highlighter={highlighter}
-          replies={replies}
-          onSetReply={handleSetReply}
-          lineComments={lineComments}
-          onSetLineComment={handleSetLineComment}
-        />
-      ) : (
-        <DiffView
-          file={file}
-          fileIndex={fileIndex}
-          highlighter={highlighter}
-          replies={replies}
-          onSetReply={handleSetReply}
-          lineComments={lineComments}
-          onSetLineComment={handleSetLineComment}
-        />
-      )}
+      {!collapsed &&
+        (file.view === "content" ? (
+          <ContentView
+            file={file}
+            fileIndex={fileIndex}
+            highlighter={highlighter}
+            replies={replies}
+            onSetReply={handleSetReply}
+            lineComments={lineComments}
+            onSetLineComment={handleSetLineComment}
+          />
+        ) : (
+          <DiffView
+            file={file}
+            fileIndex={fileIndex}
+            highlighter={highlighter}
+            replies={replies}
+            onSetReply={handleSetReply}
+            lineComments={lineComments}
+            onSetLineComment={handleSetLineComment}
+          />
+        ))}
 
-      <div className="file-note">
-        <label htmlFor={`note-${file.path}`}>Note on this file</label>
-        <textarea
-          id={`note-${file.path}`}
-          value={note}
-          onChange={(e) => onNoteChange(file.path, e.target.value)}
-          rows={3}
-          placeholder="Thoughts on this file… (included in the GitHub review body)"
-        />
-      </div>
+      {!collapsed && (
+        <div className="file-note">
+          <label htmlFor={`note-${file.path}`}>Note on this file</label>
+          <textarea
+            id={`note-${file.path}`}
+            value={note}
+            onChange={(e) => onNoteChange(file.path, e.target.value)}
+            rows={3}
+            placeholder="Thoughts on this file… (included in the GitHub review body)"
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -137,6 +158,8 @@ export const FileCard = memo(FileCardImpl, (prev, next) => {
     prev.stopNum === next.stopNum &&
     prev.highlighter === next.highlighter &&
     prev.isActive === next.isActive &&
+    prev.collapsed === next.collapsed &&
+    prev.onToggleCollapsed === next.onToggleCollapsed &&
     prev.onToggleReviewed === next.onToggleReviewed &&
     prev.onNoteChange === next.onNoteChange &&
     prev.onSetReply === next.onSetReply &&

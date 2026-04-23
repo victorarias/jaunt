@@ -375,6 +375,121 @@ describe("ui e2e — real browser round-trip", () => {
   );
 
   test(
+    "j collapses the leaving file; arrows toggle collapse; n/p are scoped to current file",
+    async () => {
+      // A fresh payload where file A has 3 annotations and file B has 1, so
+      // we can prove n/p stay inside A instead of bleeding into B.
+      const payload = makePayload({
+        meta: makeMeta({ title: "per-file annotation nav" }),
+        files: [
+          makeFile({
+            path: "src/a.ts",
+            view: "content",
+            content: "l1\nl2\nl3\nl4\nl5\nl6\n",
+            annotations: [
+              makeAnnotation(2, [{ author: "bot", body: "A1" }]),
+              makeAnnotation(4, [{ author: "bot", body: "A2" }]),
+              makeAnnotation(6, [{ author: "bot", body: "A3" }]),
+            ],
+            tourGroup: "tour",
+            additions: 6,
+            deletions: 0,
+          }),
+          makeFile({
+            path: "src/b.ts",
+            view: "content",
+            content: "only\n",
+            annotations: [makeAnnotation(1, [{ author: "bot", body: "B1" }])],
+            tourGroup: "tour",
+            additions: 1,
+            deletions: 0,
+          }),
+        ],
+        tour: makeTour({ summary: "." }),
+      });
+
+      const fx = await bootstrap(payload);
+      try {
+        // Advance from summary to file A via the drive-bar Next click (stop 1).
+        await fx.page.locator(".drive .next").click();
+        await fx.page
+          .locator("#stop-1")
+          .waitFor({ state: "visible", timeout: 5_000 });
+
+        // Focus something outside input so 'n'/'p'/arrows hit the app handler.
+        await fx.page.locator(".file-card").first().click();
+
+        // Three 'n' presses walk to the third annotation, still on file A.
+        await fx.page.keyboard.press("n");
+        await fx.page.keyboard.press("n");
+        await fx.page.keyboard.press("n");
+        expect(
+          await hasClass(fx.page.locator("#stop-1"), "active"),
+        ).toBe(true);
+
+        // A fourth 'n' must be a no-op — next-ann button is disabled at the
+        // boundary. (If it weren't scoped, we'd cross into file B and stop-2
+        // would become active.)
+        const nextAnn = fx.page.locator(".drive .ann-nav").nth(1);
+        expect(await nextAnn.isDisabled()).toBe(true);
+        await fx.page.keyboard.press("n");
+        expect(
+          await hasClass(fx.page.locator("#stop-1"), "active"),
+        ).toBe(true);
+        expect(
+          await hasClass(fx.page.locator("#stop-2"), "active"),
+        ).toBe(false);
+
+        // Press 'j' → advances to file B and collapses file A.
+        await fx.page.keyboard.press("j");
+        await fx.page
+          .locator("#stop-2.active")
+          .waitFor({ state: "visible", timeout: 5_000 });
+        expect(
+          await hasClass(fx.page.locator("#stop-1"), "collapsed"),
+        ).toBe(true);
+        // Collapsed ⇒ the content body is no longer rendered.
+        expect(
+          await fx.page.locator("#stop-1 .code.full").count(),
+        ).toBe(0);
+
+        // Back to A with 'k' — still collapsed.
+        await fx.page.keyboard.press("k");
+        await fx.page
+          .locator("#stop-1.active")
+          .waitFor({ state: "visible", timeout: 5_000 });
+        expect(
+          await hasClass(fx.page.locator("#stop-1"), "collapsed"),
+        ).toBe(true);
+
+        // ArrowRight expands.
+        await fx.page.keyboard.press("ArrowRight");
+        expect(
+          await hasClass(fx.page.locator("#stop-1"), "collapsed"),
+        ).toBe(false);
+        await fx.page
+          .locator("#stop-1 .code.full")
+          .waitFor({ state: "visible", timeout: 2_000 });
+
+        // ArrowLeft collapses again.
+        await fx.page.keyboard.press("ArrowLeft");
+        expect(
+          await hasClass(fx.page.locator("#stop-1"), "collapsed"),
+        ).toBe(true);
+        expect(
+          await fx.page.locator("#stop-1 .code.full").count(),
+        ).toBe(0);
+
+        expect(fx.pageErrors).toEqual([]);
+        expect(fx.consoleErrors).toEqual([]);
+      } finally {
+        await fx.cleanup();
+      }
+    },
+    90_000,
+  );
+
+  test(
     "Meta+Enter from inside a textarea opens the submit dialog",
     async () => {
       const fx = await bootstrap();
