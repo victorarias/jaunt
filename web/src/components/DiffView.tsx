@@ -11,6 +11,7 @@ import { UserLineComment } from "./UserLineComment.tsx";
 
 type Props = {
   file: PRFile;
+  fileIndex: number;
   highlighter: Highlighter | null;
   replies: Record<string, string>;
   onSetReply: (annotationIdx: number, text: string) => void;
@@ -53,6 +54,7 @@ function assignAnnotationsToLines(file: PRFile): {
 
 export function DiffView({
   file,
+  fileIndex,
   highlighter,
   replies,
   onSetReply,
@@ -110,6 +112,7 @@ export function DiffView({
           {outsideDiff.map(({ index, annotation }) => (
             <Thread
               key={index}
+              id={`ann-${fileIndex}-${index}`}
               annotation={annotation}
               index={index}
               reply={replies[String(index)] ?? ""}
@@ -123,6 +126,7 @@ export function DiffView({
           key={hIdx}
           hunkIndex={hIdx}
           hunk={hunk}
+          fileIndex={fileIndex}
           lang={lang}
           highlighter={highlighter}
           byDiffKey={byDiffKey}
@@ -142,6 +146,7 @@ export function DiffView({
 function HunkView({
   hunkIndex,
   hunk,
+  fileIndex,
   lang,
   highlighter,
   byDiffKey,
@@ -155,6 +160,7 @@ function HunkView({
 }: {
   hunkIndex: number;
   hunk: DiffHunk;
+  fileIndex: number;
   lang: BundledLanguage | "plaintext";
   highlighter: Highlighter | null;
   byDiffKey: Map<string, IndexedAnnotation[]>;
@@ -195,6 +201,7 @@ function HunkView({
             {hits?.map(({ index, annotation }) => (
               <Thread
                 key={index}
+                id={`ann-${fileIndex}-${index}`}
                 annotation={annotation}
                 index={index}
                 reply={replies[String(index)] ?? ""}

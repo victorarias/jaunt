@@ -88,8 +88,7 @@ function Review({ pr }: { pr: PRPayload }) {
 
   const mainRef = useRef<HTMLDivElement>(null);
 
-  const scrollToStop = useCallback((stop: number) => {
-    const id = `stop-${stop}`;
+  const scrollToId = useCallback((id: string) => {
     requestAnimationFrame(() => {
       const el = document.getElementById(id);
       const scroller = mainRef.current;
@@ -104,27 +103,46 @@ function Review({ pr }: { pr: PRPayload }) {
     });
   }, []);
 
+  // Flat list of (fileIndex, annIdx) in file-then-line order — the sequence
+  // we iterate through when the user presses n/p.
+  const flatAnns = useMemo(() => {
+    const out: { fileIndex: number; annIdx: number }[] = [];
+    files.forEach((f, fi) => {
+      f.annotations.forEach((_, ai) => {
+        out.push({ fileIndex: fi, annIdx: ai });
+      });
+    });
+    return out;
+  }, [files]);
+  const [annCursor, setAnnCursor] = useState<number>(-1);
+
   const jumpTo = useCallback(
     (stop: number) => {
-      const next = clamp(stop, 0, totalStops - 1);
-      setCurrentStop(next);
-      scrollToStop(next);
+      const nextStop = clamp(stop, 0, totalStops - 1);
+      setCurrentStop(nextStop);
+      setAnnCursor(-1);
+      scrollToId(`stop-${nextStop}`);
     },
-    [scrollToStop, totalStops],
+    [scrollToId, totalStops],
   );
+
+  // Used by both "next step" and "jump to annotation in another file" — mark
+  // the file we're leaving as reviewed, matching the j-key side-effect.
+  const markCurrentReviewedOnLeave = useCallback(() => {
+    if (currentStop > 0 && draft) {
+      const f = files[currentStop - 1];
+      if (f && !fileStateOf(draft, f.path).reviewed) {
+        toggleReviewed(f.path);
+      }
+    }
+  }, [currentStop, files, draft, toggleReviewed]);
 
   const next = useCallback(() => {
     if (currentStop < totalStops - 1) {
-      // Mark the current file reviewed as we leave it.
-      if (currentStop > 0 && draft) {
-        const f = files[currentStop - 1];
-        if (f && !fileStateOf(draft, f.path).reviewed) {
-          toggleReviewed(f.path);
-        }
-      }
+      markCurrentReviewedOnLeave();
       jumpTo(currentStop + 1);
     }
-  }, [currentStop, totalStops, files, draft, toggleReviewed, jumpTo]);
+  }, [currentStop, totalStops, markCurrentReviewedOnLeave, jumpTo]);
 
   const prev = useCallback(() => {
     if (currentStop > 0) jumpTo(currentStop - 1);
@@ -136,6 +154,46 @@ function Review({ pr }: { pr: PRPayload }) {
   const toggleCurrentReviewed = useCallback(() => {
     if (currentFile) toggleReviewed(currentFile.path);
   }, [currentFile, toggleReviewed]);
+
+  const gotoAnnotation = useCallback(
+    (delta: 1 | -1) => {
+      if (flatAnns.length === 0) return;
+      let target = annCursor + delta;
+      if (annCursor === -1) {
+        // Cursor was reset (e.g., by jumpTo). Seek relative to currentStop.
+        const here = currentStop === 0 ? -1 : currentStop - 1;
+        if (delta === 1) {
+          target = flatAnns.findIndex((a) => a.fileIndex >= here);
+        } else {
+          target = -1;
+          for (let i = flatAnns.length - 1; i >= 0; i--) {
+            if (flatAnns[i]!.fileIndex <= here) {
+              target = i;
+              break;
+            }
+          }
+        }
+      }
+      if (target < 0 || target >= flatAnns.length) return;
+      const ann = flatAnns[target]!;
+      const targetStop = ann.fileIndex + 1;
+      if (targetStop !== currentStop) {
+        markCurrentReviewedOnLeave();
+        setCurrentStop(targetStop);
+      }
+      setAnnCursor(target);
+      scrollToId(`ann-${ann.fileIndex}-${ann.annIdx}`);
+    },
+    [
+      flatAnns,
+      annCursor,
+      currentStop,
+      markCurrentReviewedOnLeave,
+      scrollToId,
+    ],
+  );
+
+  const openSubmit = useCallback(() => setSubmitOpen(true), []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -160,11 +218,29 @@ function Review({ pr }: { pr: PRPayload }) {
       } else if (e.key === "r" && currentFile) {
         e.preventDefault();
         toggleCurrentReviewed();
+      } else if (e.key === "n") {
+        e.preventDefault();
+        gotoAnnotation(1);
+      } else if (e.key === "p") {
+        e.preventDefault();
+        gotoAnnotation(-1);
+      } else if (e.key === "s" && files.length > 0) {
+        e.preventDefault();
+        openSubmit();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [next, prev, currentFile, toggleCurrentReviewed, submitOpen]);
+  }, [
+    next,
+    prev,
+    currentFile,
+    toggleCurrentReviewed,
+    gotoAnnotation,
+    openSubmit,
+    submitOpen,
+    files.length,
+  ]);
 
   const reviewedCount = useMemo(() => {
     if (!draft) return 0;
@@ -228,6 +304,7 @@ function Review({ pr }: { pr: PRPayload }) {
             <FileCard
               key={f.path}
               file={f}
+              fileIndex={i}
               stopNum={i + 1}
               draft={draft}
               highlighter={highlighter}
@@ -267,10 +344,15 @@ function Review({ pr }: { pr: PRPayload }) {
         reviewedCount={reviewedCount}
         totalFiles={files.length}
         reviewSubmitted={reviewSubmitted}
+        hasAnnotations={flatAnns.length > 0}
+        canPrevAnn={flatAnns.length > 0}
+        canNextAnn={flatAnns.length > 0}
         onPrev={prev}
         onNext={next}
+        onPrevAnn={() => gotoAnnotation(-1)}
+        onNextAnn={() => gotoAnnotation(1)}
         onToggleReviewed={toggleCurrentReviewed}
-        onOpenSubmit={() => setSubmitOpen(true)}
+        onOpenSubmit={openSubmit}
       />
 
       {submitOpen && (

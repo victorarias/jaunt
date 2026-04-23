@@ -7,8 +7,13 @@ type Props = {
   reviewedCount: number;
   totalFiles: number;
   reviewSubmitted: boolean;
+  hasAnnotations: boolean;
+  canPrevAnn: boolean;
+  canNextAnn: boolean;
   onPrev: () => void;
   onNext: () => void;
+  onPrevAnn: () => void;
+  onNextAnn: () => void;
   onToggleReviewed: () => void;
   onOpenSubmit: () => void;
 };
@@ -22,8 +27,13 @@ export function DriveBar({
   reviewedCount,
   totalFiles,
   reviewSubmitted,
+  hasAnnotations,
+  canPrevAnn,
+  canNextAnn,
   onPrev,
   onNext,
+  onPrevAnn,
+  onNextAnn,
   onToggleReviewed,
   onOpenSubmit,
 }: Props) {
@@ -38,10 +48,24 @@ export function DriveBar({
         className="prev"
         onClick={onPrev}
         disabled={currentStop === 0}
+        title="Previous step (mark prev file reviewed on forward)"
       >
         ← prev
         <span className="kbd">K</span>
       </button>
+
+      {hasAnnotations && (
+        <button
+          type="button"
+          className="ann-nav"
+          onClick={onPrevAnn}
+          disabled={!canPrevAnn}
+          title="Previous annotation"
+        >
+          ◂ ann
+          <span className="kbd">P</span>
+        </button>
+      )}
 
       <div className="stop-info">
         <b>{String(currentStop).padStart(2, "0")}</b>
@@ -77,11 +101,27 @@ export function DriveBar({
       >
         {reviewSubmitted ? "✓ review submitted" : "Submit review"}
         {!reviewSubmitted && (
-          <span className="review-count">
-            {reviewedCount}/{totalFiles}
-          </span>
+          <>
+            <span className="review-count">
+              {reviewedCount}/{totalFiles}
+            </span>
+            <span className="kbd">S</span>
+          </>
         )}
       </button>
+
+      {hasAnnotations && (
+        <button
+          type="button"
+          className="ann-nav"
+          onClick={onNextAnn}
+          disabled={!canNextAnn}
+          title="Next annotation (marks current file reviewed if crossing files)"
+        >
+          ann ▸
+          <span className="kbd">N</span>
+        </button>
+      )}
 
       <button
         type="button"

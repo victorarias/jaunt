@@ -988,6 +988,30 @@ a:hover {
   align-items: center;
   gap: 6px;
 }
+
+/* Annotation-nav buttons — smaller siblings of the step-nav prev/next,
+   so it's clear they move within the PR but at a finer grain. */
+.drive .ann-nav {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+  padding: 5px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.drive .ann-nav:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--fg-dimmer);
+  background: var(--bg-2);
+}
+.drive .ann-nav:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 .drive .prev:hover:not(:disabled) {
   color: var(--fg);
   border-color: var(--fg-dimmer);
@@ -1194,7 +1218,7 @@ a:hover {
 }
 .verdict-btn {
   display: grid;
-  grid-template-columns: 20px 1fr;
+  grid-template-columns: 20px 1fr auto;
   gap: 10px;
   padding: 10px 12px;
   background: var(--bg-2);
@@ -1205,6 +1229,9 @@ a:hover {
   font-family: inherit;
   text-align: left;
   align-items: center;
+}
+.verdict-btn .verdict-kbd {
+  justify-self: end;
 }
 .verdict-btn:hover {
   background: var(--bg-3);

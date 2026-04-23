@@ -41,11 +41,46 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      // ⌘/Ctrl+Enter submits from anywhere (textarea included).
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        if (view.kind === "form") void handleSubmit();
+        return;
+      }
+      // Letter/number shortcuts: skip when the user is typing in a field.
+      const tgt = e.target as HTMLElement | null;
+      const typing =
+        tgt &&
+        (tgt.tagName === "INPUT" ||
+          tgt.tagName === "TEXTAREA" ||
+          tgt.isContentEditable);
+      if (typing) return;
+      if (view.kind !== "form") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "1") {
+        e.preventDefault();
+        setVerdict("approve");
+      } else if (e.key === "2") {
+        e.preventDefault();
+        setVerdict("comment");
+      } else if (e.key === "3") {
+        e.preventDefault();
+        setVerdict("request_changes");
+      } else if (e.key === "t" || e.key === "T") {
+        e.preventDefault();
+        setTarget((prev) => (prev === "github" ? "agent" : "github"));
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    // handleSubmit is defined below and depends on verdict/body/target, but
+    // the listener reads the latest via closure-on-rerender, not deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose, view.kind]);
 
   const reviewedCount = files.reduce(
     (n, f) => n + (fileStateOf(draft, f.path).reviewed ? 1 : 0),
@@ -134,6 +169,7 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
           <div className="modal-actions">
             <button type="button" className="btn" onClick={onClose}>
               Close
+              <span className="kbd">Esc</span>
             </button>
           </div>
         </div>
@@ -159,7 +195,9 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
         </div>
         <div className="modal-body">
           <div className="field">
-            <label>Send to</label>
+            <label>
+              Send to <span className="opt">toggle with <span className="kbd">T</span></span>
+            </label>
             <div className="seg wide">
               <button
                 type="button"
@@ -207,7 +245,7 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
                     color: "risk",
                   },
                 ] as const
-              ).map((v) => (
+              ).map((v, i) => (
                 <button
                   key={v.id}
                   type="button"
@@ -219,6 +257,7 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
                     <b>{v.label}</b>
                     <small>{v.sub}</small>
                   </span>
+                  <span className="kbd verdict-kbd">{i + 1}</span>
                 </button>
               ))}
             </div>
@@ -273,6 +312,7 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
             disabled={busy}
           >
             Cancel
+            <span className="kbd">Esc</span>
           </button>
           <button
             type="button"
@@ -285,6 +325,7 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
               : target === "github"
                 ? "Post to GitHub →"
                 : "Send to agent →"}
+            {!busy && <span className="kbd">⌘↵</span>}
           </button>
         </div>
       </div>

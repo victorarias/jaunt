@@ -7,6 +7,7 @@ import type { Highlighter } from "../hooks/useHighlighter.ts";
 
 type Props = {
   file: PRFile;
+  fileIndex: number;
   stopNum: number;
   draft: Draft;
   highlighter: Highlighter | null;
@@ -19,6 +20,7 @@ type Props = {
 
 function FileCardImpl({
   file,
+  fileIndex,
   stopNum,
   draft,
   highlighter,
@@ -91,6 +93,7 @@ function FileCardImpl({
       {file.view === "content" ? (
         <ContentView
           file={file}
+          fileIndex={fileIndex}
           highlighter={highlighter}
           replies={replies}
           onSetReply={handleSetReply}
@@ -100,6 +103,7 @@ function FileCardImpl({
       ) : (
         <DiffView
           file={file}
+          fileIndex={fileIndex}
           highlighter={highlighter}
           replies={replies}
           onSetReply={handleSetReply}
@@ -129,6 +133,7 @@ function FileCardImpl({
 export const FileCard = memo(FileCardImpl, (prev, next) => {
   return (
     prev.file === next.file &&
+    prev.fileIndex === next.fileIndex &&
     prev.stopNum === next.stopNum &&
     prev.highlighter === next.highlighter &&
     prev.isActive === next.isActive &&

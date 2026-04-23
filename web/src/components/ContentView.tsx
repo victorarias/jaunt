@@ -11,6 +11,7 @@ import { UserLineComment } from "./UserLineComment.tsx";
 
 type Props = {
   file: PRFile;
+  fileIndex: number;
   highlighter: Highlighter | null;
   replies: Record<string, string>;
   onSetReply: (annotationIdx: number, text: string) => void;
@@ -22,6 +23,7 @@ type LineAnnotation = { index: number; annotation: Annotation };
 
 export function ContentView({
   file,
+  fileIndex,
   highlighter,
   replies,
   onSetReply,
@@ -113,6 +115,7 @@ export function ContentView({
             {hits?.map(({ index, annotation }) => (
               <Thread
                 key={`${lineNum}-${index}`}
+                id={`ann-${fileIndex}-${index}`}
                 annotation={annotation}
                 index={index}
                 reply={replies[String(index)] ?? ""}

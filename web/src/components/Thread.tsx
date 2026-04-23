@@ -5,16 +5,23 @@ type Props = {
   index: number;
   reply: string;
   onReplyChange: (index: number, text: string) => void;
+  id?: string;
 };
 
-export function Thread({ annotation, index, reply, onReplyChange }: Props) {
+export function Thread({
+  annotation,
+  index,
+  reply,
+  onReplyChange,
+  id,
+}: Props) {
   const range =
     annotation.lineStart === annotation.lineEnd
       ? `line ${annotation.lineStart}`
       : `lines ${annotation.lineStart}–${annotation.lineEnd}`;
 
   return (
-    <div className="thread">
+    <div className="thread" id={id}>
       <div className="thread-head">
         <span className="dot" />
         <span className="range">{range}</span>
