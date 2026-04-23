@@ -1186,6 +1186,9 @@ a:hover {
   overflow: hidden;
   font-family: var(--mono);
 }
+.modal:focus {
+  outline: none;
+}
 .modal-head {
   padding: 14px 18px;
   border-bottom: 1px solid var(--border);

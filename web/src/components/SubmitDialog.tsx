@@ -46,6 +46,16 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
   // keyboard — the exact bug this ref prevents.
   const handleSubmitRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
+  // Modal container ref — focused on mount so keyboard shortcuts (1/2/3, T)
+  // actually fire. Without this, focus stays on whatever textarea the user
+  // was in when they opened the dialog (the main-page "overall review" box,
+  // a line-comment, etc.), and isTypingInField(e.target) eats the shortcut
+  // keys by routing them into that textarea as literal characters.
+  const modalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    modalRef.current?.focus();
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -122,7 +132,12 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
         role="dialog"
         aria-modal="true"
       >
-        <div className="modal success" onClick={(e) => e.stopPropagation()}>
+        <div
+          ref={modalRef}
+          tabIndex={-1}
+          className="modal success"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="modal-head">
             <span className="success-glyph">✓</span>
             <span>
@@ -187,7 +202,12 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
       role="dialog"
       aria-modal="true"
     >
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={modalRef}
+        tabIndex={-1}
+        className="modal"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-head">
           <span>Submit review</span>
           <button type="button" className="close" onClick={onClose}>

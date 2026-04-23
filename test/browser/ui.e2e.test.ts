@@ -399,6 +399,21 @@ describe("ui e2e — real browser round-trip", () => {
           .locator(".modal")
           .waitFor({ state: "visible", timeout: 5_000 });
 
+        // Focus should move onto the modal — otherwise the textarea still
+        // owns it and digit / T shortcuts get typed into the reply instead
+        // of reaching the dialog's keydown handler.
+        await fx.page.waitForFunction(
+          () => document.activeElement?.classList.contains("modal") ?? false,
+          { timeout: 2_000 },
+        );
+        // Prove it end-to-end: pressing "3" should actually select
+        // "Request changes" now that focus is on the modal.
+        await fx.page.keyboard.press("3");
+        const requestChangesBtn = fx.page.locator(
+          ".verdict-btn.risk.active",
+        );
+        await requestChangesBtn.waitFor({ state: "visible", timeout: 2_000 });
+
         expect(fx.pageErrors).toEqual([]);
         expect(fx.consoleErrors).toEqual([]);
       } finally {

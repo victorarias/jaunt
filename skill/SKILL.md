@@ -283,16 +283,14 @@ It parses the YAML with the same loader the app uses, then reports:
 
 ### 9. Ask the user how to run it
 
-Before launching, ask the user one short question:
+There are two post-launch modes, and there's no sensible default — guessing wrong wastes the user's time:
 
-> *"fire-and-forget (just open it for you), or should I wait for your review and act on the feedback?"*
+- **hand-off** — you open the app and step away. The user drives the review solo; your part ends once the URL is up.
+- **wait-and-act** — you stay on the hook. When the user submits, you read the feedback file and act on it (fix code, reply to threads, reopen the tour on the same port, etc.).
 
-There's no sensible default here — the two modes have very different implications for what you do next, and guessing wrong wastes the user's time.
+Ask in your own words — don't parrot the mode names. Two sentences, casual: what you're about to do, then the choice. E.g. *"Tour's ready to launch. Want me to hang around and pick up your feedback after you submit, or just open it and let you drive?"* Or *"About to spin up the app — should I wait for your review and handle the comments, or drop you into it and move on?"* The goal is a question that sounds like a teammate asking, not a form field.
 
-- **fire-and-forget** — the user wants the tour; your job ends once the app is up.
-- **await-and-act-on-feedback** — the user wants you to block until they submit and then incorporate their comments. This matches phrasings like *"review this PR and address my comments"*, *"wait for my feedback"*, *"when I'm done let me know what you'll change"*.
-
-Don't re-ask if the user's original request already made the mode obvious (*"build a tour, then come back and fix the things I flag"* is unambiguously await-and-act).
+**Don't ask at all if the user's original request already made the mode obvious.** *"Build a tour, then come back and fix the things I flag"* is unambiguously wait-and-act; *"just give me a tour to read"* is unambiguously hand-off. Re-asking in those cases is noise.
 
 ### 10. Launch the app
 
@@ -307,7 +305,7 @@ pr-tour <pr-ref> --port 5174       # bind a specific port (see re-launch below)
 
 If `pr-tour` isn't on `$PATH`, fall back to `cd ~/projects/pr-tour && bun run start <pr-ref>` (same flags apply).
 
-**Always launch pr-tour as a backgrounded task.** pr-tour is a long-running server that only exits on submit (or Ctrl-C). A normal blocking Bash call will hang and you'll never see the URL to report — that's a dead end in both modes. Whatever your shell tool's "run in background" affordance is (e.g. `run_in_background: true`), use it. Both fire-and-forget and await-and-act-on-feedback background the same way; they only differ in what you do *after* the server is up.
+**Always launch pr-tour as a backgrounded task.** pr-tour is a long-running server that only exits on submit (or Ctrl-C). A normal blocking Bash call will hang and you'll never see the URL to report — that's a dead end in both modes. Whatever your shell tool's "run in background" affordance is (e.g. `run_in_background: true`), use it. Both hand-off and wait-and-act background the same way; they only differ in what you do *after* the server is up.
 
 **Startup sentinel** — on bind, pr-tour prints:
 
@@ -328,9 +326,9 @@ pr-tour: REVIEW_POSTED url=https://github.com/owner/repo/pull/123#...
 
 Both modes: background the launch, tail for `LISTENING`, report the URL. After that:
 
-- **fire-and-forget**: done. The backgrounded process will exit on its own when the user submits; you don't need to watch for it.
+- **hand-off**: done. The backgrounded process will exit on its own when the user submits; you don't need to watch for it.
 
-- **await-and-act-on-feedback**: start watching the task output for a second sentinel — `FEEDBACK_READY` or `REVIEW_POSTED` — or for the process to exit. Use a monitor/watch tool if your environment has one; otherwise poll the output at a slow cadence (don't hot-loop — the user's review takes minutes). When it fires:
+- **wait-and-act**: start watching the task output for a second sentinel — `FEEDBACK_READY` or `REVIEW_POSTED` — or for the process to exit. Use a monitor/watch tool if your environment has one; otherwise poll the output at a slow cadence (don't hot-loop — the user's review takes minutes). When it fires:
   1. `FEEDBACK_READY`: read `~/.pr-tour/<owner>_<repo>_<num>.feedback.md`, act on the feedback. After you're done, **re-launch on the same port**: `pr-tour <ref> --port <N>` where `<N>` is the port from the original `LISTENING` line (again as a backgrounded task, again tail for the new `LISTENING`). Tell the user the server's back up and to refresh their browser tab to see the updated code and leave follow-up comments.
   2. `REVIEW_POSTED`: user submitted to GitHub directly — acknowledge, no local action, do not re-launch.
   3. Long silence (tens of minutes, no exit): the user probably closed the browser without submitting. Ask before killing — don't assume abandonment.
