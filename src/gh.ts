@@ -1,5 +1,6 @@
 import { $ } from "bun";
 import type {
+  ContentResult,
   DiffHunk,
   DiffLine,
   FileStatus,
@@ -238,7 +239,7 @@ export async function fetchFileContent(
   sha: string,
   path: string,
   blobSha?: string | null,
-): Promise<string | null> {
+): Promise<ContentResult> {
   const slug = `${ref.owner}/${ref.repo}`;
   // Try the contents API first — cheap, serves raw bytes directly. But it
   // hard-caps at 1MB, so large files (long generated components, plan docs
@@ -247,7 +248,7 @@ export async function fetchFileContent(
   try {
     const apiPath = `/repos/${slug}/contents/${path}?ref=${sha}`;
     const result = await $`gh api ${apiPath} -H ${"Accept: application/vnd.github.raw"}`.quiet();
-    return result.stdout.toString("utf-8");
+    return { ok: true, content: result.stdout.toString("utf-8") };
   } catch (err) {
     contentsErr = describeFetchError(err);
   }
@@ -255,8 +256,9 @@ export async function fetchFileContent(
   // Fallback: Git blobs API via the blob sha carried on the PR-files entry.
   // No 1MB cap — handles large files. Returns base64 JSON; decode ourselves.
   if (!blobSha) {
+    const reason = `contents API: ${contentsErr}; no blob sha on the PR-files entry for fallback`;
     logFetchFailure(path, contentsErr, "no blob sha on the PR-files entry");
-    return null;
+    return { ok: false, reason };
   }
   let blobErr: string | null = null;
   try {
@@ -264,7 +266,10 @@ export async function fetchFileContent(
       .quiet()
       .json()) as { content?: string; encoding?: string };
     if (blob.encoding === "base64" && typeof blob.content === "string") {
-      return Buffer.from(blob.content, "base64").toString("utf-8");
+      return {
+        ok: true,
+        content: Buffer.from(blob.content, "base64").toString("utf-8"),
+      };
     }
     blobErr = `unexpected blob response (encoding=${String(blob.encoding)}, content=${typeof blob.content})`;
   } catch (err) {
@@ -272,7 +277,10 @@ export async function fetchFileContent(
   }
 
   logFetchFailure(path, contentsErr, blobErr);
-  return null;
+  return {
+    ok: false,
+    reason: `contents API: ${contentsErr ?? "n/a"}; blob API: ${blobErr}`,
+  };
 }
 
 function describeFetchError(err: unknown): string {

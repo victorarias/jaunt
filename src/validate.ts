@@ -1,6 +1,7 @@
 import type { PRPayload, PRRef } from "./types.ts";
 import type { Tour, TourAnnotation, TourFileEntry } from "./tour.ts";
 import { loadTour, resolveTourPath } from "./tour.ts";
+import { createContentResolver, type RemoteFetch } from "./content.ts";
 
 export type ValidateReport = {
   guidePath: string;
@@ -10,12 +11,7 @@ export type ValidateReport = {
 
 export type ValidateDeps = {
   fetchPR: (ref: PRRef) => Promise<PRPayload>;
-  fetchFileContent: (
-    ref: PRRef,
-    sha: string,
-    path: string,
-    blobSha?: string | null,
-  ) => Promise<string | null>;
+  fetchFileContent: RemoteFetch;
 };
 
 /**
@@ -103,6 +99,13 @@ async function validateAgainstPR(
   const blobShaByPath = new Map<string, string | null>(
     payload.files.map((f) => [f.path, f.blobSha]),
   );
+  const resolve = createContentResolver({
+    ref,
+    headSha: payload.meta.headSha,
+    cwd: process.cwd(),
+    blobShaByPath,
+    remoteFetch: deps.fetchFileContent,
+  });
 
   for (const entry of tour.files) {
     if (!prFiles.has(entry.path)) {
@@ -128,14 +131,9 @@ async function validateAgainstPR(
       entry.view === "content" || entry.annotations.length > 0;
     if (!needsContent) continue;
 
-    let content: string | null = null;
+    let res;
     try {
-      content = await deps.fetchFileContent(
-        ref,
-        payload.meta.headSha,
-        entry.path,
-        blobShaByPath.get(entry.path) ?? null,
-      );
+      res = await resolve(entry.path);
     } catch (err) {
       report.errors.push(
         `"${entry.path}": failed to fetch content (${err instanceof Error ? err.message : String(err)}) — the app won't be able to resolve anchors`,
@@ -143,26 +141,23 @@ async function validateAgainstPR(
       continue;
     }
 
-    if (content === null) {
+    if (!res.ok) {
       if (entry.annotations.length > 0) {
-        // The contents API caps at 1MB; the blob-API fallback runs after. If
-        // we're still null here, both paths failed and the anchors literally
-        // cannot land in the UI — that's an error, not a warning.
+        // Anchors can't resolve without content — hard error.
         report.errors.push(
-          `"${entry.path}": has ${entry.annotations.length} annotation(s) but content unavailable after both contents API and blob API — anchors will not resolve at runtime. Check file accessibility or remove the annotations.`,
+          `"${entry.path}": has ${entry.annotations.length} annotation(s) but content unavailable (${res.reason}) — anchors will not resolve at runtime.`,
         );
       } else if (entry.view === "content") {
-        // view=content with no annotations means the app falls back to diff
-        // — annoying (the reader gets the all-add diff instead of the prose)
-        // but not broken. Warn rather than error.
+        // view=content with no annotations means the app falls back to diff —
+        // annoying but not broken. Warn.
         report.warnings.push(
-          `"${entry.path}": view=content requested but content unavailable (app will fall back to diff)`,
+          `"${entry.path}": view=content requested but content unavailable (${res.reason}) — app will fall back to diff`,
         );
       }
       continue;
     }
 
-    checkAnnotations(entry, content, report);
+    checkAnnotations(entry, res.content, report);
   }
 }
 

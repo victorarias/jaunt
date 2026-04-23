@@ -256,11 +256,14 @@ export async function applyTour(
     const needsContent = entry.view === "content" || entry.annotations.length > 0;
     let content: string | null = null;
     if (needsContent) {
+      // loadContent is expected to record its own failures into the payload's
+      // fileErrors list (that's wired up in api-handlers). A thrown exception
+      // here is unexpected — record it as a warning so it at least surfaces.
       try {
         content = await loadContent(entry.path);
       } catch (err) {
         warnings.push(
-          `tour: failed to fetch content for "${entry.path}": ${err instanceof Error ? err.message : String(err)}`
+          `tour: loadContent threw for "${entry.path}": ${err instanceof Error ? err.message : String(err)}`
         );
       }
     }
@@ -274,6 +277,8 @@ export async function applyTour(
 
     let view: FileView = entry.view;
     if (view === "content" && content === null) {
+      // view=content without content falls back to diff — not fatal but worth
+      // a warning, since the reader was promised the full file.
       warnings.push(
         `tour: "${entry.path}" requested view=content but content is unavailable; falling back to diff`
       );
@@ -313,7 +318,7 @@ export async function applyTour(
     others.push({ ...f, tourGroup: "other" });
   }
 
-  const meta: TourMeta = { summary: tour.summary, warnings };
+  const meta: TourMeta = { summary: tour.summary, warnings, fileErrors: [] };
 
   return {
     ...payload,

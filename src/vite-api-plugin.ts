@@ -21,6 +21,22 @@ export function apiPlugin(opts: {
         await respondJSON(res, () => handlers.getPR());
       });
 
+      server.middlewares.use("/api/refetch-content", async (req, res) => {
+        if (req.method !== "POST") {
+          res.statusCode = 405;
+          res.end();
+          return;
+        }
+        await respondJSON(res, async () => {
+          const body = await readBody(req);
+          const parsed = body ? (JSON.parse(body) as { paths?: unknown }) : {};
+          const paths = Array.isArray(parsed.paths)
+            ? parsed.paths.filter((p): p is string => typeof p === "string")
+            : [];
+          return handlers.refetchContent(paths);
+        });
+      });
+
       server.middlewares.use("/api/draft", async (req, res) => {
         if (req.method === "GET") {
           await respondJSON(res, () => handlers.getDraft());

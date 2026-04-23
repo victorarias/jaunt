@@ -37,7 +37,7 @@ function makeFakeDeps(overrides: Partial<ApiDeps> = {}): FakeDeps {
     },
     fetchFileContent: async (_ref, sha, path) => {
       calls.fetchFileContent.push({ sha, path });
-      return null;
+      return { ok: false, reason: "fake: no content" };
     },
     submitReviewComment: async (ref, body) => {
       calls.submitReviewComment.push({ ref, body });
@@ -92,7 +92,7 @@ describe("createApiHandlers.getPR", () => {
     ];
     const { deps, calls } = makeFakeDeps({
       fetchPR: async () => makePayload({ files: baseFiles }),
-      fetchFileContent: async () => "line1\nline2\n",
+      fetchFileContent: async () => ({ ok: true, content: "line1\nline2\n" }),
     });
     const h = createApiHandlers({
       ref: sampleRef,
@@ -124,6 +124,79 @@ describe("createApiHandlers.getPR", () => {
     expect(pr.files[2]!.tourGroup).toBe("skip");
     // Caching: fetchFileContent called at most once per path.
     expect(calls.fetchFileContent.length).toBeLessThanOrEqual(baseFiles.length);
+  });
+});
+
+describe("createApiHandlers.refetchContent", () => {
+  test("invalidates named paths and re-calls fetchFileContent without re-fetching the PR", async () => {
+    const baseFiles = [
+      makeFile({ path: "a.ts", blobSha: "sha-a" }),
+      makeFile({ path: "b.ts", blobSha: "sha-b" }),
+    ];
+    const seq: string[] = [];
+    const outcomes: Record<string, Array<{ ok: boolean; content?: string; reason?: string }>> = {
+      "a.ts": [
+        { ok: false, reason: "rate limited" },
+        { ok: true, content: "line1\nline2\n" },
+      ],
+      "b.ts": [{ ok: true, content: "b line1\n" }],
+    };
+    const idx: Record<string, number> = { "a.ts": 0, "b.ts": 0 };
+
+    let fetchPRCalls = 0;
+    const { deps, calls } = makeFakeDeps({
+      fetchPR: async () => {
+        fetchPRCalls += 1;
+        return makePayload({ files: baseFiles });
+      },
+      fetchFileContent: async (_ref, _sha, path) => {
+        seq.push(path);
+        const step = outcomes[path]![idx[path]!]!;
+        idx[path]! += 1;
+        return step.ok
+          ? { ok: true, content: step.content! }
+          : { ok: false, reason: step.reason! };
+      },
+    });
+
+    const h = createApiHandlers({
+      ref: sampleRef,
+      tour: {
+        version: 1,
+        summary: "",
+        files: [
+          {
+            path: "a.ts",
+            note: "",
+            view: "content",
+            annotations: [],
+          },
+          {
+            path: "b.ts",
+            note: "",
+            view: "content",
+            annotations: [],
+          },
+        ],
+        skip: [],
+      },
+      deps,
+      cwd: "/nonexistent-so-git-show-always-fails",
+    });
+
+    const first = await h.getPR();
+    expect(first.tour!.fileErrors).toHaveLength(1);
+    expect(first.tour!.fileErrors[0]!.path).toBe("a.ts");
+    expect(first.tour!.fileErrors[0]!.reason).toContain("rate limited");
+    expect(fetchPRCalls).toBe(1);
+
+    const second = await h.refetchContent(["a.ts"]);
+    expect(second.tour!.fileErrors).toHaveLength(0);
+    // fetchPR should not have been called again — PR metadata is paid once.
+    expect(fetchPRCalls).toBe(1);
+    // b.ts cached content should not be re-fetched; only a.ts was invalidated.
+    expect(seq.filter((p) => p === "b.ts").length).toBe(1);
+    expect(seq.filter((p) => p === "a.ts").length).toBe(2);
   });
 });
 

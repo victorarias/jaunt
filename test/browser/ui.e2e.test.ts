@@ -97,7 +97,7 @@ async function bootstrap(
 
   const deps: ApiDeps = {
     fetchPR: async () => payload,
-    fetchFileContent: async () => null,
+    fetchFileContent: async () => ({ ok: false, reason: "test stub" }),
     submitReviewComment: async (_ref, body) => {
       github.submitCalls.push({ body });
       return `https://github.com/${sampleRef.owner}/${sampleRef.repo}/pull/${sampleRef.number}#pullrequestreview-1`;

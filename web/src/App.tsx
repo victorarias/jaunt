@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchPR, submitReview } from "./api.ts";
+import { fetchPR, refetchContent, submitReview } from "./api.ts";
 import type { PRPayload, SubmitTarget } from "./types.ts";
 import { composeReviewBody, type Verdict } from "../../src/compose.ts";
 import { fileStateOf, useDraft } from "./hooks/useDraft.ts";
@@ -11,6 +11,7 @@ import { Sidebar } from "./components/Sidebar.tsx";
 import { SummaryCard } from "./components/SummaryCard.tsx";
 import { FileCard } from "./components/FileCard.tsx";
 import { DriveBar } from "./components/DriveBar.tsx";
+import { ErrorBanner } from "./components/ErrorBanner.tsx";
 import {
   SubmitDialog,
   type SubmitOutcome,
@@ -48,10 +49,21 @@ export function App() {
   if (state.kind === "error") {
     return <div className="status-msg error">{state.message}</div>;
   }
-  return <Review pr={state.pr} />;
+  return (
+    <Review
+      pr={state.pr}
+      onUpdate={(pr) => setState({ kind: "ready", pr })}
+    />
+  );
 }
 
-function Review({ pr }: { pr: PRPayload }) {
+function Review({
+  pr,
+  onUpdate,
+}: {
+  pr: PRPayload;
+  onUpdate: (pr: PRPayload) => void;
+}) {
   const highlighter = useHighlighter();
   const {
     draft,
@@ -202,6 +214,15 @@ function Review({ pr }: { pr: PRPayload }) {
 
       <main className="main" ref={mainRef}>
         <div className="main-inner">
+          {pr.tour && pr.tour.fileErrors.length > 0 && (
+            <ErrorBanner
+              fileErrors={pr.tour.fileErrors}
+              onRetry={async (paths) => {
+                const updated = await refetchContent(paths);
+                onUpdate(updated);
+              }}
+            />
+          )}
           <SummaryCard meta={pr.meta} files={files} tour={pr.tour} />
           {files.map((f, i) => (
             <FileCard

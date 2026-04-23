@@ -6,6 +6,7 @@ export type {
   DiffLine,
   DiffLineType,
   FileDraft,
+  FileError,
   FileStatus,
   FileView,
   PRFile,

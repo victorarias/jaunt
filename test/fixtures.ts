@@ -66,7 +66,7 @@ export function makePayload(overrides: Partial<PRPayload> = {}): PRPayload {
 }
 
 export function makeTour(overrides: Partial<TourMeta> = {}): TourMeta {
-  return { summary: "", warnings: [], ...overrides };
+  return { summary: "", warnings: [], fileErrors: [], ...overrides };
 }
 
 export function makeDraft(overrides: Partial<Draft> = {}): Draft {

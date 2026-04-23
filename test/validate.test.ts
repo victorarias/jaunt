@@ -33,8 +33,11 @@ function stubDeps(
 ): ValidateDeps {
   return {
     fetchPR: async (_ref: PRRef) => payload,
-    fetchFileContent: async (_ref, _sha, path) =>
-      path in contents ? contents[path]! : null,
+    fetchFileContent: async (_ref, _sha, path) => {
+      const v = path in contents ? contents[path] : null;
+      if (v == null) return { ok: false, reason: "not in stub" };
+      return { ok: true, content: v };
+    },
   };
 }
 

@@ -66,10 +66,26 @@ export type PRFile = {
   annotations: Annotation[];
 };
 
+export type FileError = {
+  path: string;
+  reason: string;
+};
+
 export type TourMeta = {
   summary: string;
   warnings: string[];
+  fileErrors: FileError[];
 };
+
+/**
+ * Result of a content-fetch attempt. `ok: true` carries the file bytes;
+ * `ok: false` carries a human-readable reason that gets surfaced in the
+ * error banner. Kept as a discriminated union (not a nullable string) so
+ * "content unavailable" always comes with an explanation.
+ */
+export type ContentResult =
+  | { ok: true; content: string }
+  | { ok: false; reason: string };
 
 export type PRPayload = {
   meta: PRMeta;

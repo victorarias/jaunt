@@ -41,7 +41,7 @@ function makeDeps(
 ): ApiDeps {
   return {
     fetchPR: async () => opts.payload,
-    fetchFileContent: async () => null,
+    fetchFileContent: async () => ({ ok: false, reason: "test stub" }),
     submitReviewComment: async (_ref, body) => {
       if (!opts.onSubmit) {
         throw new Error("submitReviewComment not expected in this test");

@@ -6,6 +6,16 @@ export async function fetchPR(): Promise<PRPayload> {
   return resp.json();
 }
 
+export async function refetchContent(paths: string[]): Promise<PRPayload> {
+  const resp = await fetch("/api/refetch-content", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paths }),
+  });
+  if (!resp.ok) throw new Error(`refetch failed (${resp.status})`);
+  return resp.json();
+}
+
 export async function fetchDraft(): Promise<Draft> {
   const resp = await fetch("/api/draft");
   if (!resp.ok) throw new Error(`fetch draft failed (${resp.status})`);
