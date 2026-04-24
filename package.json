@@ -1,6 +1,6 @@
 {
   "name": "@victorarias/jaunt",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publishConfig": {
     "access": "public"
   },
@@ -46,20 +46,20 @@
     "check": "bun run typecheck && bun run test:unit"
   },
   "dependencies": {
+    "@tailwindcss/vite": "^4.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "shiki": "^4.0.2",
+    "tailwindcss": "^4.2.3",
+    "vite": "^8.0.9",
     "yaml": "^2.8.3"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.2.3",
     "@types/bun": "latest",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.1",
-    "playwright": "^1.59.1",
-    "tailwindcss": "^4.2.3",
-    "vite": "^8.0.9"
+    "playwright": "^1.59.1"
   },
   "peerDependencies": {
     "typescript": "^5"
