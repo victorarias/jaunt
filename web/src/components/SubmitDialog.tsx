@@ -7,8 +7,8 @@ import type { Verdict } from "../../../src/compose.ts";
 export type { Verdict };
 
 export type SubmitOutcome =
-  | { target: "github"; url: string }
-  | { target: "agent"; path: string };
+  | { target: "github"; url: string; finish: boolean }
+  | { target: "agent"; path: string; finish: boolean };
 
 type Props = {
   files: PRFile[];
@@ -18,6 +18,7 @@ type Props = {
     verdict: Verdict,
     body: string,
     target: SubmitTarget,
+    finish: boolean,
   ) => Promise<SubmitOutcome>;
 };
 
@@ -38,6 +39,7 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
   const [view, setView] = useState<View>({ kind: "form" });
   const [verdict, setVerdict] = useState<Verdict>("approve");
   const [target, setTarget] = useState<SubmitTarget>("agent");
+  const [finish, setFinish] = useState(false);
   const [body, setBody] = useState(draft.overallBody);
 
   // Ref tracking the latest handleSubmit so the window keydown listener (below)
@@ -81,6 +83,9 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
       } else if (e.key === "t" || e.key === "T") {
         e.preventDefault();
         setTarget((prev) => (prev === "github" ? "agent" : "github"));
+      } else if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        setFinish((prev) => !prev);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -100,7 +105,14 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
     const snapshotTotal = files.length;
     setView({ kind: "submitting" });
     try {
-      const outcome = await onSubmit(verdict, body, target);
+      const outcome = await onSubmit(verdict, body, target, finish);
+      // Non-final submit: close the dialog so the reviewer can keep going.
+      // The agent hasn't been handed control yet — the success modal would
+      // just be in the way.
+      if (!outcome.finish) {
+        onClose();
+        return;
+      }
       setView({
         kind: "done",
         verdict,
@@ -238,7 +250,7 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
             <div className="hint">
               {target === "github"
                 ? "Posts a review comment on the pull request with your verdict and notes."
-                : "Writes the composed feedback to ~/.pr-tour/<ref>.feedback.md so the invoking agent can pick it up."}
+                : "Writes the composed feedback to ~/.jaunt/<ref>.feedback.md so the invoking agent can pick it up."}
             </div>
           </div>
 
@@ -316,6 +328,27 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
             </div>
           </div>
 
+          <div className="field finish-field">
+            <label className="finish-toggle">
+              <input
+                type="checkbox"
+                checked={finish}
+                onChange={(e) => setFinish(e.target.checked)}
+              />
+              <span>
+                End review after this submit
+                <span className="opt">
+                  <span className="kbd">F</span>
+                </span>
+              </span>
+            </label>
+            <div className="hint">
+              {finish
+                ? "The server will exit after this submit — hands control back to the agent."
+                : "Keeps the server up so you can keep submitting notes. The agent waits until you end the review."}
+            </div>
+          </div>
+
           {view.kind === "error" && (
             <div
               className="tour-warning"
@@ -343,9 +376,7 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
           >
             {busy
               ? "Submitting…"
-              : target === "github"
-                ? "Post to GitHub →"
-                : "Send to agent →"}
+              : submitLabel(target, finish)}
             {!busy && <span className="kbd">⌘↵</span>}
           </button>
         </div>
@@ -356,7 +387,7 @@ export function SubmitDialog({ files, draft, onClose, onSubmit }: Props) {
 
 function agentPrompt(ownerRepoNumber: string, path: string): string {
   return [
-    `I finished reviewing ${ownerRepoNumber} via pr-tour.`,
+    `I finished reviewing ${ownerRepoNumber} via jaunt.`,
     ``,
     `Read the feedback file at:`,
     `  ${path}`,
@@ -422,6 +453,13 @@ function AgentPromptPanel({
       </div>
     </>
   );
+}
+
+function submitLabel(target: SubmitTarget, finish: boolean): string {
+  if (target === "github") {
+    return finish ? "Post & end review →" : "Post to GitHub →";
+  }
+  return finish ? "Send & end review →" : "Send to agent →";
 }
 
 function placeholderFor(v: Verdict): string {

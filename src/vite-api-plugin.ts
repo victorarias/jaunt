@@ -15,7 +15,7 @@ export function apiPlugin(opts: {
   const handlers = createApiHandlers(opts);
 
   return {
-    name: "pr-tour-api",
+    name: "jaunt-api",
     configureServer(server) {
       server.middlewares.use("/api/pr", async (_req, res) => {
         await respondJSON(res, () => handlers.getPR());
@@ -63,11 +63,20 @@ export function apiPlugin(opts: {
         const captured: { value: SubmitResult | null } = { value: null };
         await respondJSON(res, async () => {
           const body = await readBody(req);
-          const { body: reviewBody, target } = JSON.parse(body) as {
+          const {
+            body: reviewBody,
+            target,
+            finish,
+          } = JSON.parse(body) as {
             body: string;
             target?: SubmitTarget;
+            finish?: boolean;
           };
-          const r = await handlers.submit(reviewBody, target ?? "github");
+          const r = await handlers.submit(
+            reviewBody,
+            target ?? "github",
+            finish === true,
+          );
           captured.value = r;
           return r;
         });

@@ -74,6 +74,7 @@ function Review({
     setAnnotationReply,
     setLineComment,
     clearLocal,
+    clearSubmittedContent,
   } = useDraft(pr.meta.ref);
 
   const files = pr.files;
@@ -179,16 +180,23 @@ function Review({
     verdict: Verdict,
     body: string,
     target: SubmitTarget,
+    finish: boolean,
   ): Promise<SubmitOutcome> {
     if (!draft) throw new Error("Draft not loaded");
     const composed = composeReviewBody(verdict, body, draft, files);
-    const result = await submitReview(composed, target);
+    const result = await submitReview(composed, target, finish);
     if (!result.ok) throw new Error(result.error);
-    setReviewSubmitted(true);
-    clearLocal();
+    if (finish) {
+      setReviewSubmitted(true);
+      clearLocal();
+    } else {
+      // Mid-review submit: wipe the content we just shipped so the next
+      // submit is "what's new since", but keep reviewed marks intact.
+      clearSubmittedContent();
+    }
     return result.target === "github"
-      ? { target: "github", url: result.url }
-      : { target: "agent", path: result.path };
+      ? { target: "github", url: result.url, finish: result.finish }
+      : { target: "agent", path: result.path, finish: result.finish };
   }
 
   if (!draft) {

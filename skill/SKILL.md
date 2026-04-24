@@ -1,11 +1,11 @@
 ---
-name: pr-tour
-description: Generate a `.pr-tour-guide.yml` reading-order file for a GitHub PR so Victor can review it in the pr-tour app in a curated order with inline notes, then launch the app. Use when the user asks to build a PR tour, generate a reading order, make a pr-tour guide, says "/pr-tour", or asks to "open the tour" / "open it" after a tour has been created.
+name: jaunt
+description: Generate a `.jaunt-guide.yml` reading-order file for a GitHub PR so the user can review it in the jaunt web app in a curated order with inline notes, then launch the app. Use when the user asks to build a PR tour, generate a reading order, make a jaunt guide, says "/jaunt", or asks to "open the tour" / "open it" after a guide has been created.
 ---
 
-# pr-tour
+# jaunt
 
-Produces `.pr-tour-guide.yml` in the current working directory — a curated reading order with per-file notes that the local pr-tour app (`~/projects/pr-tour`) consumes.
+Produces `.jaunt-guide.yml` in the current working directory — a curated reading order with per-file notes that the local `jaunt` CLI consumes.
 
 ## PR ref resolution
 
@@ -16,15 +16,15 @@ Accept any of these forms as input; if none is given, resolve implicitly.
 | `349`                                             | PR #349 in the current repo (via `gh pr view 349 --json ...`)                                   |
 | `owner/repo#349` / `owner/repo/349`               | Specific repo + number                                                                          |
 | `https://github.com/owner/repo/pull/349`          | Full URL                                                                                        |
-| *(no argument)*                                   | PR of the current branch — `gh pr view --json number,headRepository,headRepositoryOwner` (must be run in the target repo's cwd; don't assume the pr-tour cwd is the repo) |
+| *(no argument)*                                   | PR of the current branch — `gh pr view --json number,headRepository,headRepositoryOwner` (must be run in the target repo's cwd) |
 
 If no PR exists for the current branch, stop and tell the user. Do not invent a ref.
 
-**Important:** `gh pr view` operates on the cwd's repo. If the user ran `/pr-tour` from a project directory (e.g. `~/projects/huxie`), run gh from there — not from the pr-tour app directory.
+**Run gh from the target repo's cwd.** If the user ran `/jaunt` from their project directory (e.g. `~/projects/their-repo`), run gh from there so `gh pr view` operates on the right repo.
 
 ## What you produce
 
-A single `.pr-tour-guide.yml` in the cwd, shape:
+A single `.jaunt-guide.yml` in the cwd, shape:
 
 ```yaml
 version: 1
@@ -68,20 +68,12 @@ Prefer `anchor` over exact line numbers — it's more stable against edits and y
 
 ### YAML authoring: `>` for prose, `|` for structure
 
-This bites often enough to deserve its own callout. When a `note:` or thread-item body is more than one line of prose, use a **folded** block (`>`), not a **literal** block (`|`):
+This bites often enough to deserve its own callout. For any `note:` or thread-item body that runs more than one line, use a **folded** block (`>`):
 
 ```yaml
-# Good: folded. Single newlines collapse to spaces; the reader sees one
+# Folded. Single newlines collapse to spaces; the reader sees one
 # flowing paragraph that the browser wraps to its own width.
 note: >
-  Went back and forth on retry-on-conflict — dropped it in the end
-  because it breaks idempotency when the caller's a webhook, and here
-  it almost always is.
-
-# Bad: literal. Every newline you typed becomes a visible <br> in the
-# rendered comment, so hard-wrapping at ~80 cols for YAML readability
-# leaks into the UI as a stack of short lines.
-note: |
   Went back and forth on retry-on-conflict — dropped it in the end
   because it breaks idempotency when the caller's a webhook, and here
   it almost always is.
@@ -89,10 +81,10 @@ note: |
 
 Rule of thumb:
 - **`>` (folded)** — prose. Wrap your YAML freely at ~80 cols for readability; the UI sees one paragraph. Use this for almost every multi-line `note:`, `summary:`, and thread item.
-- **`|` (literal)** — the linebreaks mean something. A bulleted list typed one-per-line, a short code block, ASCII art. Rare.
-- **Single-quoted or double-quoted string** — a short note that fits on one line. Simplest; no block scalar needed.
+- **`|` (literal)** — the linebreaks are meaningful. A bulleted list typed one-per-line, a short code block, ASCII art. Rare.
+- **Single- or double-quoted string** — a short note that fits on one line. Simplest; no block scalar needed.
 
-Both `>` and `|` treat a blank line as a paragraph break — so `>` still lets you write multi-paragraph notes, you just use `\n\n` to separate paragraphs and let single newlines collapse to spaces.
+Both `>` and `|` treat a blank line as a paragraph break — so `>` still supports multi-paragraph notes, you just use `\n\n` to separate paragraphs.
 
 ## Voice
 
@@ -103,7 +95,7 @@ Four rules of thumb, in order:
 1. **Teach, don't list.** Notes should build understanding, not enumerate changes. "Enums first — the rest of the system keys off these states" teaches. "Adds Status and Priority enums" lists. The diff lists already. Line-pinned annotations have a sharper version of this rule — see step 5b.
 2. **Be concise.** Pedagogic is not the same as thorough. A note that takes 5 lines to say what 2 would is worse than the 2-line version, not better. Short sentences. No filler ("basically", "essentially", "it's worth noting that"). If you can delete a sentence without losing meaning, delete it.
 3. **Assume a smart reader.** No hand-holding on standard patterns (what a repository adapter does, what an HTTP handler looks like). Explain what's *non-obvious* — the invariant, the tradeoff, the constraint you bowed to — and trust the reviewer on the rest.
-4. **Sound like a friendly engineer, not a textbook.** You're writing for a teammate, not an audience — think senior engineer who actively wants the reviewer to *get it*, not one showing off how tight the code is. Loose register. Contractions. First person where it helps (*"I almost went the other way here"*, *"you'll probably wonder about the retry loop — it got messy, had to be"*). Little asides when a decision is weird or annoying are good; so is meeting the reader where they are (*"if you've read the plan, this'll be familiar"*). What to avoid: stiff openers (*"This module provides..."*, *"The purpose of this file is..."*), smugness, and cold one-line pronouncements (*"Use this. Don't simplify."*) that shut the reader down. A good note reads like how you'd walk a teammate through the PR on a good day — confident, casual, generous with context.
+4. **Sound like a friendly engineer, not a textbook.** You're writing for a teammate, not an audience — think senior engineer who actively wants the reviewer to *get it*, not one showing off how tight the code is. Loose register. Contractions. First person where it helps (*"I almost went the other way here"*, *"you'll probably wonder about the retry loop — it got messy, had to be"*). Little asides when a decision is weird or annoying are good; so is meeting the reader where they are (*"if you've read the plan, this'll be familiar"*). What to avoid: stiff openers (*"This module provides..."*, *"The purpose of this file is..."*), smugness, and cold one-line pronouncements that shut the reader down. A good note reads like how you'd walk a teammate through the PR on a good day — confident, casual, generous with context.
 
 A good tour feels like a sharp colleague walking you through the codebase at a whiteboard. A bad tour feels like a compliance checklist.
 
@@ -136,7 +128,7 @@ Count files. Group by directory/layer (domain / ports / services / adapters / te
 
 **Small PRs (≤ 8 files):** a tour is often not worth it *if* the change is mechanical (rename, dependency bump, formatting). If the change is small but consequential (a new invariant, a subtle race fix), write a short tour with 1–2 annotations — that's where a tour earns its keep. Same-session authors should default to producing the tour; only ask the user if the PR is genuinely trivial.
 
-**Large PRs (30+ files):** a tour earns its keep. Budget your reading — read the plan, the domain model, and a couple of service/test files. Don't read every file; that's what the reviewer is for.
+**Large PRs (30+ files):** a tour earns its keep. Budget your reading — read the plan, the domain model, and a couple of service/test files. You don't need to read every file; that's what the reviewer is for.
 
 ### 3. Decide the reading order
 
@@ -163,7 +155,7 @@ Always put these under `skip` (they still appear, dimmed; the reviewer can glanc
 - `**/sqlcgen/*.go` (queries.sql.go, models.go, db.go)
 - `**/*_pb.go`, `**/*.pb.go` (generated protobuf)
 - `website/src/api/gen/**` (generated gRPC-Web clients)
-- Lock files if in the diff: `bun.lock`, `package-lock.json`, `go.sum` *(small ones you can leave under Other; only skip if they dominate the list)*
+- Lock files if in the diff: `bun.lock`, `package-lock.json`, `go.sum` *(small ones can stay under Other; skip only if they dominate the list)*
 - Snapshot fixtures, golden files if huge
 
 ### 5. Write the notes
@@ -180,12 +172,7 @@ Good notes reference:
 
 **Length**: 1–3 lines is the sweet spot. Up to 5 for a file the PR hinges on (the service, the plan). A one-line note is fine for a thin file — don't pad. If you find yourself writing a paragraph, you're probably restating the diff.
 
-Bad notes to avoid:
-- *"This file defines the Foo struct."* — the diff shows that.
-- *"Added new method Bar."* — same.
-- *"Refactored to be cleaner."* — the reviewer decides that.
-- *"This module is responsible for handling..."* — boilerplate opener; cut to the teaching point.
-- *"The code comment says X"* / *"As the docstring notes..."* — repeating text the reader already sees isn't a note; give the reason the line matters.
+Aim for notes that teach — reference the invariant, the tradeoff, the constraint the reader can't see in the diff. If a note could be replaced by reading the diff itself, it's not pulling its weight.
 
 ### 5a. Decide `view:` per file
 
@@ -195,16 +182,16 @@ Default `view: diff`. Switch to `view: content` when the diff is not the right f
 - **New large reference docs** — same reasoning
 - **Long new config files or schemas** where the structure matters more than the add markers
 
-Do NOT switch to `content` for:
-- Code files (always `diff` — the reviewer wants to see what changed)
-- Small doc changes (the diff is small and useful)
-- Renamed or moved files (diff shows the rename)
+Keep `view: diff` for:
+- Code files — the reviewer wants to see what changed
+- Small doc changes — the diff is small and useful
+- Renamed or moved files — diff shows the rename
 
 ### 5b. Add line-level annotations (optional, but high-leverage)
 
 For the files that carry the design (the service, the plan doc, the aggregate that everything keys off), add `annotations:` to pin 1–5 notes to specific lines. This is where the tour adds the most value: it tells the reader *exactly* where the important stuff is instead of making them hunt.
 
-**An annotation is a pin, not a transcript.** The reader already sees the anchored line right above your note — the app renders it inline. So the annotation must never copy the line back at them: don't paste the function signature, don't echo the inline code comment, don't paraphrase the plan-doc paragraph the pin sits inside. That's wasted ink. Use the note for context the line doesn't carry — *why* this line matters, the invariant it enforces, the constraint that forced this shape, the downstream behavior that hinges on it. This rule bites hardest on plan docs: the plan is already well-written prose, so an annotation that restates it adds nothing. If the line already says everything that needs saying, don't pin it.
+**An annotation is a pin, not a transcript.** The reader already sees the anchored line right above your note — the app renders it inline. So the annotation adds context the line doesn't carry — *why* this line matters, the invariant it enforces, the constraint that forced this shape, the downstream behavior that hinges on it. If the line already says everything that needs saying, don't pin it.
 
 **When to annotate:**
 - Plan / design doc: pin the status table, the key decision tables, each major invariant
@@ -222,7 +209,7 @@ annotations:
 
 Pick anchors that are distinctive and unlikely to appear twice — heading text, function signatures, specific constants. The anchor just needs to be a substring of some line; leading/trailing whitespace in the line is fine.
 
-**Verify every anchor before you commit to it.** The resolver takes the *first* substring match in the post-PR file. After picking an anchor, mentally (or actually) grep the file and confirm the first hit is the line you mean. If there's any risk of ambiguity — e.g. `"func Resolve"` when both `Resolve` and `ResolveAsync` exist, or a heading repeated across sections — lengthen the anchor to include surrounding tokens (`"func (s *Service) Resolve("` or `"## Decision table 2 — pair rules"`). A wrong-line anchor silently pins to the wrong place; the app can't warn you.
+**Verify every anchor before you commit to it.** The resolver takes the *first* substring match in the post-PR file. After picking an anchor, grep the file (mentally or actually) and confirm the first hit is the line you mean. If there's any risk of ambiguity — e.g. `"func Resolve"` when both `Resolve` and `ResolveAsync` exist, or a heading repeated across sections — lengthen the anchor to include surrounding tokens (`"func (s *Service) Resolve("` or `"## Decision table 2 — pair rules"`). A wrong-line anchor silently pins to the wrong place; the app can't warn you.
 
 **Line numbers** (`line: N` or `start: N, end: M`) work too, but prefer anchors — they survive file edits. Reach for `line:` only when there's no distinctive text to anchor on. Use `start:+end:` when the annotation covers a block you want highlighted together (a transaction, a state machine, a Lua script), not a single line.
 
@@ -242,9 +229,7 @@ When a decision is likely to draw a "why not X?" reply, use `thread:` instead of
       it almost always is.
 ```
 
-**Default to bare strings.** Both bubbles are authored by *you* (the agent writing the tour), so both render under the same "agent" byline — that's correct. Do not use `{ author: claude[bot], body: ... }` to make the follow-up feel like a second voice; it's the same voice, and a split byline makes the thread read like a two-person dialogue when it isn't. Two bubbles already give the visual separation.
-
-Only reach for `{author, body}` when you're quoting a genuinely different voice — e.g., the PR author's own words from the description, or a past reviewer's comment you want to preserve context on.
+**Default to bare strings.** Both bubbles are authored by *you* (the agent writing the tour), so both render under the same "agent" byline — that's correct. Use `{ author, body }` only when you're quoting a genuinely different voice — e.g., the PR author's own words from the description, or a past reviewer's comment you want to preserve context on.
 
 **This is the highest-leverage annotation form for same-session authors.** You already know which choices were contested, which alternatives you rejected, and why. Surfacing the rejected alternative in a follow-up comment saves the reviewer a round-trip ("why didn't you just…?"). Use `thread:` whenever:
 - You picked an option that isn't the obvious default
@@ -262,89 +247,93 @@ Three to five lines. Tell the reviewer:
 
 ### 7. Write the file
 
-Write `.pr-tour-guide.yml` in the cwd (not in the pr-tour app directory; the reviewer runs pr-tour from the PR's repo or wherever they prefer). Do not overwrite a non-empty existing `.pr-tour-guide.yml` without asking.
+Write `.jaunt-guide.yml` in the cwd (not in the jaunt install directory; the reviewer runs `jaunt` from the PR's repo). If a non-empty `.jaunt-guide.yml` already exists, ask before overwriting.
 
 ### 8. Validate
 
 After writing, run:
 
 ```bash
-pr-tour validate
+jaunt validate
 ```
 
-Useful variants: `pr-tour validate --offline` (schema-only — no `gh` calls) and `pr-tour validate --pr <ref>` (check against a specific PR instead of the current branch's).
+Useful variants: `jaunt validate --offline` (schema-only — no `gh` calls) and `jaunt validate --pr <ref>` (check against a specific PR instead of the current branch's).
 
 It parses the YAML with the same loader the app uses, then reports:
 
 - **Errors** (exit non-zero) — schema problems, paths in `files` not in the PR, anchors that don't resolve, `line:` / `end:` past end of file, a path listed in both `files` and `skip`, duplicate `files` entries. Fix and re-run until `validate` is clean.
 - **Warnings** — ambiguous anchors (first substring match wins; lengthen if that's not what you want), `skip:` entries not in the PR, very short anchors, `view: content` on files the app can't fetch. Act on these unless you have a specific reason not to.
 
-**Do not improvise your own YAML validation** (no `python -c "import yaml..."`, no inline scripts, no eyeballing the file yourself). `pr-tour validate` is the contract — it catches everything the app will silently misinterpret, and it's the one source of truth. If `pr-tour` isn't on `$PATH`, run `cd ~/projects/pr-tour && bun run src/cli.ts validate [guide-path]` from the target repo's directory (pass the guide path explicitly since cwd will be the pr-tour repo).
+`jaunt validate` is the contract — it catches everything the app will silently misinterpret. Use it as the source of truth for YAML correctness; schema checks the parser does here are the same ones the app does at runtime.
 
 ### 9. Ask the user how to run it
 
 There are two post-launch modes, and there's no sensible default — guessing wrong wastes the user's time:
 
 - **hand-off** — you open the app and step away. The user drives the review solo; your part ends once the URL is up.
-- **wait-and-act** — you stay on the hook. When the user submits, you read the feedback file and act on it (fix code, reply to threads, reopen the tour on the same port, etc.).
+- **wait-and-act** — you stay on the hook. When the user ends the review, you read the feedback file and act on it (fix code, reply to threads, reopen the tour on the same port, etc.).
 
-Ask in your own words — don't parrot the mode names. Two sentences, casual: what you're about to do, then the choice. E.g. *"Tour's ready to launch. Want me to hang around and pick up your feedback after you submit, or just open it and let you drive?"* Or *"About to spin up the app — should I wait for your review and handle the comments, or drop you into it and move on?"* The goal is a question that sounds like a teammate asking, not a form field.
+Ask in your own words — don't parrot the mode names. Two sentences, casual: what you're about to do, then the choice. E.g. *"Tour's ready to launch. Want me to hang around and pick up your feedback after you're done, or just open it and let you drive?"* Or *"About to spin up the app — should I wait for your review and handle the comments, or drop you into it and move on?"* The goal is a question that sounds like a teammate asking, not a form field.
 
-**Don't ask at all if the user's original request already made the mode obvious.** *"Build a tour, then come back and fix the things I flag"* is unambiguously wait-and-act; *"just give me a tour to read"* is unambiguously hand-off. Re-asking in those cases is noise.
+Skip the question when the user's original request already made the mode obvious. *"Build a tour, then come back and fix the things I flag"* is unambiguously wait-and-act; *"just give me a tour to read"* is unambiguously hand-off. Re-asking in those cases is noise.
 
 ### 10. Launch the app
 
 Start the server yourself — don't leave it as a command for the user to copy.
 
 ```bash
-pr-tour <pr-ref>                   # user's own machine; auto-opens browser
-pr-tour <pr-ref> --host            # remote dev (ssh, codespace, sandbox);
-                                   # prints http://<hostname>:5174/, no auto-open
-pr-tour <pr-ref> --port 5174       # bind a specific port (see re-launch below)
+jaunt <pr-ref>                   # user's own machine; auto-opens browser
+jaunt <pr-ref> --host            # remote dev (ssh, codespace, sandbox);
+                                 # prints http://<hostname>:5174/, no auto-open
+jaunt <pr-ref> --port 5174       # bind a specific port (see re-launch below)
 ```
 
-If `pr-tour` isn't on `$PATH`, fall back to `cd ~/projects/pr-tour && bun run start <pr-ref>` (same flags apply).
+**Always launch `jaunt` as a backgrounded task.** `jaunt` is a long-running server that exits when the reviewer ends the review. A normal blocking Bash call will hang and you'll never see the URL to report — that's a dead end in both modes. Whatever your shell tool's "run in background" affordance is (e.g. `run_in_background: true`), use it. Both hand-off and wait-and-act background the same way; they only differ in what you do *after* the server is up.
 
-**Always launch pr-tour as a backgrounded task.** pr-tour is a long-running server that only exits on submit (or Ctrl-C). A normal blocking Bash call will hang and you'll never see the URL to report — that's a dead end in both modes. Whatever your shell tool's "run in background" affordance is (e.g. `run_in_background: true`), use it. Both hand-off and wait-and-act background the same way; they only differ in what you do *after* the server is up.
-
-**Startup sentinel** — on bind, pr-tour prints:
+**Startup sentinel** — on bind, `jaunt` prints:
 
 ```
-pr-tour: LISTENING port=5174 url=http://localhost:5174/
+jaunt: LISTENING port=5174 url=http://localhost:5174/
 ```
 
-Immediately after launching, tail the backgrounded task's output until you see that `LISTENING` line (a few seconds, tops). Extract `port=` and `url=` from it — **do not guess or assume the port** (Vite falls back to 5174, 5175, … if 5173 is taken; you'd report the wrong one). The URL you tell the user comes straight from the `url=` value. If you don't see `LISTENING` within ~10s, surface whatever error the output shows.
+Immediately after launching, tail the backgrounded task's output until you see that `LISTENING` line (a few seconds, tops). Extract `port=` and `url=` from it — the URL you tell the user comes straight from the `url=` value. If you don't see `LISTENING` within ~10s, surface whatever error the output shows.
 
-**Submit sentinel + exit** — when the reviewer clicks Submit, pr-tour prints one of these and then exits `0`:
+**Submit sentinels + exit** — every time the reviewer submits, `jaunt` prints one of these sentinel lines with a `finish=` suffix. The server exits only when `finish=true` — that's the reviewer ticking "End review after this submit" in the dialog, which is the one signal that actually ends the session:
 
 ```
-pr-tour: FEEDBACK_READY path=/home/victor/.pr-tour/owner_repo_123.feedback.md
-pr-tour: REVIEW_POSTED url=https://github.com/owner/repo/pull/123#...
+jaunt: FEEDBACK_READY path=~/.jaunt/owner_repo_123.feedback.md finish=false
+jaunt: FEEDBACK_READY path=~/.jaunt/owner_repo_123.feedback.md finish=true
+jaunt: REVIEW_POSTED url=https://github.com/owner/repo/pull/123#... finish=false
+jaunt: REVIEW_POSTED url=https://github.com/owner/repo/pull/123#... finish=true
 ```
+
+Mid-review submits (`finish=false`) append a new timestamped section to the feedback file; the reviewer can submit multiple rounds before ending. Treat `finish=false` sentinels as informational — the review isn't over.
+
+**Process exit is the authoritative "done" signal.** It only fires after a `finish=true` submit.
 
 #### Spawn shape
 
 Both modes: background the launch, tail for `LISTENING`, report the URL. After that:
 
-- **hand-off**: done. The backgrounded process will exit on its own when the user submits; you don't need to watch for it.
+- **hand-off**: done. The backgrounded process will exit on its own when the user ends the review; you don't need to watch for it.
 
-- **wait-and-act**: start watching the task output for a second sentinel — `FEEDBACK_READY` or `REVIEW_POSTED` — or for the process to exit. Use a monitor/watch tool if your environment has one; otherwise poll the output at a slow cadence (don't hot-loop — the user's review takes minutes). When it fires:
-  1. `FEEDBACK_READY`: read `~/.pr-tour/<owner>_<repo>_<num>.feedback.md`, act on the feedback. After you're done, **re-launch on the same port**: `pr-tour <ref> --port <N>` where `<N>` is the port from the original `LISTENING` line (again as a backgrounded task, again tail for the new `LISTENING`). Tell the user the server's back up and to refresh their browser tab to see the updated code and leave follow-up comments.
-  2. `REVIEW_POSTED`: user submitted to GitHub directly — acknowledge, no local action, do not re-launch.
-  3. Long silence (tens of minutes, no exit): the user probably closed the browser without submitting. Ask before killing — don't assume abandonment.
+- **wait-and-act**: watch the task until **the process exits**. Intermediate `finish=false` sentinel lines are informational only — the review is still in progress. When the process exits (which only happens after a `finish=true` submit), grep the final output for which path it took:
+  1. Ended with `FEEDBACK_READY …finish=true`: read `~/.jaunt/<owner>_<repo>_<num>.feedback.md` (which contains every round the reviewer submitted, ordered oldest-first), act on the feedback. After you're done, **re-launch on the same port**: `jaunt <ref> --port <N>` where `<N>` is the port from the original `LISTENING` line (again as a backgrounded task, again tail for the new `LISTENING`). Tell the user the server's back up and to refresh their browser tab to see the updated code and leave follow-up comments.
+  2. Ended with `REVIEW_POSTED …finish=true`: user posted the final round to GitHub — acknowledge, no local action, no re-launch needed.
+  3. Long silence with no exit: the user is either still reviewing or closed the browser without ending. Ask before killing — don't assume abandonment.
 
-The re-launch makes the loop feel continuous: same URL, user refreshes, drafts are fresh (they were cleared on submit), and the new process picks up whatever commits you just made.
+The re-launch makes the loop feel continuous: same URL, user refreshes, drafts are fresh (they were cleared on the final submit), and the new process picks up whatever commits you just made.
 
-**"Open the tour" / "open it" means launch the app.** The YAML is an internal artifact — the user never wants you to cat / Read / open the `.pr-tour-guide.yml` file itself, even when their request is that terse. Their tour *is* the running web page. So: when the user asks to "open the tour", "open it", "show me", or any similar verbage after a tour has been created, spawn `pr-tour <ref>` (with `--host` as appropriate) — don't display the YAML. If the app is already running, tell them the URL; don't restart.
+**"Open the tour" / "open it" means launch the app.** The YAML is an internal artifact — the user wants the running web page, not the file. So: when the user asks to "open the tour", "open it", "show me", or any similar verbage after a tour has been created, spawn `jaunt <ref>` (with `--host` as appropriate) — launch the app rather than displaying the YAML. If the app is already running, tell them the URL; don't restart.
 
-**Heads up: the tour is loaded once at startup.** If you (or the user) edit `.pr-tour-guide.yml` after launching, the running server won't pick up the change — kill it (Ctrl-C) and re-run `pr-tour <pr-ref>`. Tell the user this when you report, so they don't wonder why a tweak isn't showing up.
+**Heads up: the tour is loaded once at startup.** If you (or the user) edit `.jaunt-guide.yml` after launching, the running server won't pick up the change — kill it (Ctrl-C) and re-run `jaunt <pr-ref>`. Tell the user this when you report, so they don't wonder why a tweak isn't showing up.
 
 ### 11. Report
 
 Tell the user, tersely:
 - The file you wrote and where
 - Count of tour / other / skip entries
-- The `pr-tour validate` result (clean / N warnings)
+- The `jaunt validate` result (clean / N warnings)
 - The URL the app is serving at (localhost, or the remote hostname if you used `--host`)
 - The "re-run if the YAML changes" reminder
 
@@ -354,17 +343,14 @@ Tell the user, tersely:
 - **Pure test PR:** reading order is the test file itself, then helpers it uses.
 - **Pure refactor with no new concepts:** a tour is low value. Offer to skip and just rely on "Other files" order.
 - **Generated files dominate (e.g. 200 lines of human code, 5000 lines of generated):** skip everything generated; summary should tell the reviewer the generated churn is ignorable.
-- **Repo is not the cwd:** the PR lives in a different repo from where pr-tour will run. Generate the guide in the PR's repo (so paths are relative to that repo's files), not in the pr-tour directory.
+- **Repo is not the cwd:** the PR lives in a different repo from where `jaunt` will run. Generate the guide in the PR's repo (so paths are relative to that repo's files).
 
-## Do not
+## Principles
 
-- Invent files or line references you didn't verify.
-- Paraphrase the diff in notes — the reader can see it.
-- Transcribe the anchored line into its annotation. Copying the function signature, the inline code comment, or a paragraph from a plan doc wastes the pin — the reader already sees the line. Annotations add *why*, not *what*.
-- Write a 20-line note on a 5-line change.
-- Skip reading the diff on a fresh session just because the file list looks familiar. File names ≠ content.
-- Pick ambiguous anchors and hope the first match is right. Verify, or lengthen.
-- Use `|` (literal block) for prose with hard-wrapped lines. The newlines render as visible `<br>`s in the comment bubble. Use `>` (folded) — see the YAML-authoring callout above.
-- Write your own YAML validator. Use `pr-tour validate` — it catches exactly what the app would silently misinterpret.
-- Overwrite an existing `.pr-tour-guide.yml` that has substantial content without asking.
-- Post the guide to GitHub — this skill is local-file only. (Posting to a pinned PR comment is a future feature.)
+- **Verify before you write.** Invented files, wrong anchors, and un-checked line numbers silently pin notes to the wrong place. The reviewer can't tell they were misled.
+- **Annotations add *why*, not *what*.** The line is already visible; pin context the line doesn't carry.
+- **Prefer anchors over line numbers.** Anchors survive edits.
+- **Use `>` (folded) for prose.** `|` renders hard-wrapped YAML lines as visible `<br>`s in the UI.
+- **Scale the tour to the PR.** 20 lines of notes on a 5-line change feels like noise.
+- **Trust `jaunt validate`.** It catches the exact mistakes the app would silently misinterpret.
+- **The guide is a local artifact.** Posting it to GitHub or to a shared location is out of scope — this skill is local-file only.

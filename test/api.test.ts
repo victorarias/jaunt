@@ -10,7 +10,7 @@ type FakeDeps = {
     fetchPR: number;
     fetchFileContent: Array<{ sha: string; path: string }>;
     submitReviewComment: Array<{ ref: PRRef; body: string }>;
-    writeFeedback: Array<{ ref: PRRef; body: string }>;
+    writeFeedback: Array<{ ref: PRRef; body: string; opts?: { finish?: boolean } }>;
     loadDraft: number;
     saveDraft: number;
     clearDraft: number;
@@ -43,8 +43,8 @@ function makeFakeDeps(overrides: Partial<ApiDeps> = {}): FakeDeps {
       calls.submitReviewComment.push({ ref, body });
       return `https://github.com/${ref.owner}/${ref.repo}/pull/${ref.number}#review-1`;
     },
-    writeFeedback: async (ref, body) => {
-      calls.writeFeedback.push({ ref, body });
+    writeFeedback: async (ref, body, opts) => {
+      calls.writeFeedback.push({ ref, body, opts });
       return `/tmp/fake-feedback/${ref.owner}_${ref.repo}_${ref.number}.feedback.md`;
     },
     loadDraft: async () => {
@@ -224,16 +224,17 @@ describe("createApiHandlers.putDraft", () => {
 });
 
 describe("createApiHandlers.submit", () => {
-  test("target=github calls submitReviewComment, clears draft, returns url", async () => {
+  test("target=github, finish=true calls submitReviewComment, clears draft, returns url + finish", async () => {
     const { deps, calls } = makeFakeDeps();
     const h = createApiHandlers({ ref: sampleRef, tour: null, deps });
 
-    const result = await h.submit("the body", "github");
+    const result = await h.submit("the body", "github", true);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
     expect(result.target).toBe("github");
     if (result.target !== "github") throw new Error("unreachable");
     expect(result.url).toContain("github.com");
+    expect(result.finish).toBe(true);
 
     expect(calls.submitReviewComment).toHaveLength(1);
     expect(calls.submitReviewComment[0]!.body).toBe("the body");
@@ -241,21 +242,53 @@ describe("createApiHandlers.submit", () => {
     expect(calls.clearDraft).toBe(1);
   });
 
-  test("target=agent writes feedback, clears draft, returns path", async () => {
+  test("target=agent, finish=true writes feedback with finish=true, clears draft", async () => {
     const { deps, calls } = makeFakeDeps();
     const h = createApiHandlers({ ref: sampleRef, tour: null, deps });
 
-    const result = await h.submit("agent body", "agent");
+    const result = await h.submit("agent body", "agent", true);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
     expect(result.target).toBe("agent");
     if (result.target !== "agent") throw new Error("unreachable");
     expect(result.path).toContain(".feedback.md");
+    expect(result.finish).toBe(true);
 
     expect(calls.writeFeedback).toHaveLength(1);
     expect(calls.writeFeedback[0]!.body).toBe("agent body");
+    expect(calls.writeFeedback[0]!.opts).toEqual({ finish: true });
     expect(calls.submitReviewComment).toHaveLength(0);
     expect(calls.clearDraft).toBe(1);
+  });
+
+  test("finish=false on agent target appends to feedback and does NOT clear the draft", async () => {
+    const { deps, calls } = makeFakeDeps();
+    const h = createApiHandlers({ ref: sampleRef, tour: null, deps });
+
+    const result = await h.submit("interim note", "agent", false);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    if (result.target !== "agent") throw new Error("unreachable");
+    expect(result.finish).toBe(false);
+
+    expect(calls.writeFeedback).toHaveLength(1);
+    expect(calls.writeFeedback[0]!.opts).toEqual({ finish: false });
+    // Crucial: draft survives so the reviewer can keep going with reviewed marks.
+    expect(calls.clearDraft).toBe(0);
+  });
+
+  test("finish=false on github target posts review but does NOT clear the draft", async () => {
+    const { deps, calls } = makeFakeDeps();
+    const h = createApiHandlers({ ref: sampleRef, tour: null, deps });
+
+    const result = await h.submit("mid review", "github", false);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    if (result.target !== "github") throw new Error("unreachable");
+    expect(result.finish).toBe(false);
+
+    expect(calls.submitReviewComment).toHaveLength(1);
+    expect(calls.clearDraft).toBe(0);
   });
 
   test("returns ok:false when the dep throws, and does NOT clear the draft", async () => {
@@ -266,7 +299,7 @@ describe("createApiHandlers.submit", () => {
     });
     const h = createApiHandlers({ ref: sampleRef, tour: null, deps });
 
-    const result = await h.submit("body", "github");
+    const result = await h.submit("body", "github", true);
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("unreachable");
     expect(result.error).toBe("gh exploded");

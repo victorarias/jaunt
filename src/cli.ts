@@ -50,10 +50,10 @@ async function main() {
   const ref = parsePRRef(args.prRef, fallback ?? undefined);
   if (!ref) {
     console.error(
-      `pr-tour: cannot resolve PR reference from "${args.prRef}"\n` +
-        `  try: pr-tour 349   (from inside a repo gh knows)\n` +
-        `  or:  pr-tour owner/repo#349\n` +
-        `  or:  pr-tour https://github.com/owner/repo/pull/349`
+      `jaunt: cannot resolve PR reference from "${args.prRef}"\n` +
+        `  try: jaunt 349   (from inside a repo gh knows)\n` +
+        `  or:  jaunt owner/repo#349\n` +
+        `  or:  jaunt https://github.com/owner/repo/pull/349`
     );
     process.exit(1);
   }
@@ -68,18 +68,18 @@ async function main() {
         tourSource = tourPath;
       } catch (err) {
         console.error(
-          `pr-tour: failed to load tour file: ${err instanceof Error ? err.message : String(err)}`
+          `jaunt: failed to load tour file: ${err instanceof Error ? err.message : String(err)}`
         );
         process.exit(1);
       }
     } else if (args.guide) {
-      console.error(`pr-tour: tour file not found: ${args.guide}`);
+      console.error(`jaunt: tour file not found: ${args.guide}`);
       process.exit(1);
     }
   }
 
   console.log(
-    `\x1b[2mpr-tour\x1b[0m \x1b[36m${ref.owner}/${ref.repo}\x1b[0m#\x1b[1m${ref.number}\x1b[0m`
+    `\x1b[2mjaunt\x1b[0m \x1b[36m${ref.owner}/${ref.repo}\x1b[0m#\x1b[1m${ref.number}\x1b[0m`
   );
   if (tourSource) {
     console.log(`\x1b[2m  tour:\x1b[0m ${tourSource}`);
@@ -105,31 +105,39 @@ async function main() {
     onSubmit: (result) => {
       if (!result.ok) return;
       // Machine-readable sentinel lines so a spawning agent can grep stdout
-      // for a signal even if it chose to background instead of await.
+      // for a signal even if it chose to background instead of await. The
+      // `finish=` suffix tells the agent whether the review is over or the
+      // user intends to keep submitting — process exit is still authoritative.
       if (result.target === "agent") {
-        console.log(`pr-tour: FEEDBACK_READY path=${result.path}`);
+        console.log(
+          `jaunt: FEEDBACK_READY path=${result.path} finish=${result.finish}`,
+        );
       } else {
-        console.log(`pr-tour: REVIEW_POSTED url=${result.url}`);
+        console.log(
+          `jaunt: REVIEW_POSTED url=${result.url} finish=${result.finish}`,
+        );
       }
-      // Exit on successful submit — the session is effectively over (draft
-      // is cleared on submit). This is the primary signal for agents that
-      // spawned pr-tour and are awaiting the review. Give the event loop a
-      // beat so the HTTP response + Vite HMR flush before we tear down.
+      if (!result.finish) return;
+      // finish=true: the reviewer ticked "end review after this submit",
+      // so the session is done. Give the event loop a beat so the HTTP
+      // response + Vite HMR flush before we tear down.
       setTimeout(() => {
         void handle.close().finally(() => process.exit(0));
       }, 250);
     },
   });
   handle.viteServer.printUrls();
-  // Machine-readable startup sentinel so an agent spawning pr-tour can grab
+  // Machine-readable startup sentinel so an agent spawning jaunt can grab
   // the bound port without parsing vite's pretty-printed URL output. Useful
   // when re-launching after acting on feedback so the user's browser refresh
   // hits the same port.
   const boundPort = portFromHandle(handle);
   if (boundPort !== null) {
-    console.log(`pr-tour: LISTENING port=${boundPort} url=${handle.url}`);
+    console.log(`jaunt: LISTENING port=${boundPort} url=${handle.url}`);
   }
-  console.log("\x1b[2m(Ctrl-C to stop; server exits on submit)\x1b[0m");
+  console.log(
+    "\x1b[2m(Ctrl-C to stop; submits append to feedback; server exits on \"end review\" submit)\x1b[0m",
+  );
 }
 
 function portFromHandle(handle: {
@@ -168,7 +176,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     if (a === "--guide") {
       const next = argv[++i];
       if (!next) {
-        console.error("pr-tour: --guide requires a path argument");
+        console.error("jaunt: --guide requires a path argument");
         process.exit(1);
       }
       out.guide = next;
@@ -182,7 +190,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       const next = argv[++i];
       const n = next ? parseInt(next, 10) : NaN;
       if (!Number.isFinite(n) || n < 0 || n > 65535) {
-        console.error("pr-tour: --port requires an integer 0–65535");
+        console.error("jaunt: --port requires an integer 0–65535");
         process.exit(1);
       }
       out.port = n;
@@ -191,7 +199,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     if (a.startsWith("--port=")) {
       const n = parseInt(a.slice("--port=".length), 10);
       if (!Number.isFinite(n) || n < 0 || n > 65535) {
-        console.error("pr-tour: --port requires an integer 0–65535");
+        console.error("jaunt: --port requires an integer 0–65535");
         process.exit(1);
       }
       out.port = n;
@@ -207,9 +215,9 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 function printUsage() {
   console.log(
-    "usage: pr-tour <pr-ref> [--guide <path>] [--no-guide] [--host] [--port <N>]\n" +
-      "       pr-tour validate [path] [--pr <ref>] [--offline]\n" +
-      "       pr-tour install-skill [--force]\n" +
+    "usage: jaunt <pr-ref> [--guide <path>] [--no-guide] [--host] [--port <N>]\n" +
+      "       jaunt validate [path] [--pr <ref>] [--offline]\n" +
+      "       jaunt install-skill [--force]\n" +
       "\n" +
       "  <pr-ref> is one of:\n" +
       "    349                            (number; uses current gh repo)\n" +
@@ -218,7 +226,7 @@ function printUsage() {
       "    https://github.com/.../pull/349\n" +
       "\n" +
       "  tour guide:\n" +
-      "    auto-loads .pr-tour-guide.yml (or .yaml) from cwd if present\n" +
+      "    auto-loads .jaunt-guide.yml (or .yaml) from cwd if present\n" +
       "    --guide <path>   use an explicit tour file\n" +
       "    --no-guide       ignore any tour file, show files alphabetically\n" +
       "\n" +
@@ -227,14 +235,14 @@ function printUsage() {
       "    --port <N>       bind to a specific port (default: random free)\n" +
       "\n" +
       "  validate:\n" +
-      "    parses .pr-tour-guide.yml, checks paths + anchors against the PR.\n" +
-      "    [path]           guide to validate (default: cwd's .pr-tour-guide.yml)\n" +
+      "    parses .jaunt-guide.yml, checks paths + anchors against the PR.\n" +
+      "    [path]           guide to validate (default: cwd's .jaunt-guide.yml)\n" +
       "    --pr <ref>       PR to check against (default: current branch's PR)\n" +
       "    --offline        skip the gh fetch — schema-only checks\n" +
       "\n" +
       "  install-skill:\n" +
-      "    copies skill/SKILL.md → ~/.claude/skills/pr-tour/SKILL.md\n" +
-      "    so Claude Code picks up the /pr-tour skill.\n" +
+      "    copies skill/SKILL.md → ~/.claude/skills/jaunt/SKILL.md\n" +
+      "    so Claude Code picks up the /jaunt skill.\n" +
       "    --force          overwrite an existing installation"
   );
 }
@@ -253,7 +261,7 @@ async function validateCommand(args: string[]) {
     if (a === "--pr") {
       const next = args[++i];
       if (!next) {
-        console.error("pr-tour validate: --pr requires a value");
+        console.error("jaunt validate: --pr requires a value");
         process.exit(1);
       }
       prRef = next;
@@ -268,14 +276,14 @@ async function validateCommand(args: string[]) {
       process.exit(0);
     }
     if (a.startsWith("-")) {
-      console.error(`pr-tour validate: unknown flag ${a}`);
+      console.error(`jaunt validate: unknown flag ${a}`);
       process.exit(1);
     }
     if (explicitPath === undefined) {
       explicitPath = a;
       continue;
     }
-    console.error(`pr-tour validate: unexpected argument ${a}`);
+    console.error(`jaunt validate: unexpected argument ${a}`);
     process.exit(1);
   }
 
@@ -283,8 +291,8 @@ async function validateCommand(args: string[]) {
   if (!guidePath) {
     console.error(
       explicitPath
-        ? `pr-tour validate: guide not found: ${explicitPath}`
-        : `pr-tour validate: no .pr-tour-guide.yml (or .yaml) in ${process.cwd()}`,
+        ? `jaunt validate: guide not found: ${explicitPath}`
+        : `jaunt validate: no .jaunt-guide.yml (or .yaml) in ${process.cwd()}`,
     );
     process.exit(1);
   }
@@ -296,14 +304,14 @@ async function validateCommand(args: string[]) {
     if (prRef) {
       ref = parsePRRef(prRef, fallback ?? undefined);
       if (!ref) {
-        console.error(`pr-tour validate: cannot resolve --pr "${prRef}"`);
+        console.error(`jaunt validate: cannot resolve --pr "${prRef}"`);
         process.exit(1);
       }
     } else {
       ref = await currentBranchPR(fallback);
       if (!ref) {
         console.error(
-          "pr-tour validate: could not resolve a PR for the current branch.\n" +
+          "jaunt validate: could not resolve a PR for the current branch.\n" +
             "  pass --pr <ref>, or --offline for schema-only checks.",
         );
         process.exit(1);
@@ -314,7 +322,7 @@ async function validateCommand(args: string[]) {
 
   const report = await validateTour({ guidePath, ref, deps });
 
-  console.log(`\x1b[2mpr-tour validate\x1b[0m ${report.guidePath}`);
+  console.log(`\x1b[2mjaunt validate\x1b[0m ${report.guidePath}`);
   if (ref) {
     console.log(
       `\x1b[2m  against\x1b[0m \x1b[36m${ref.owner}/${ref.repo}\x1b[0m#\x1b[1m${ref.number}\x1b[0m`,
@@ -355,7 +363,7 @@ async function installSkill(args: string[]) {
   const force = args.includes("--force") || args.includes("-f");
   if (args.some((a) => a !== "--force" && a !== "-f")) {
     console.error(
-      "pr-tour install-skill: unexpected argument(s): " +
+      "jaunt install-skill: unexpected argument(s): " +
         args.filter((a) => a !== "--force" && a !== "-f").join(" "),
     );
     process.exit(1);
@@ -363,13 +371,13 @@ async function installSkill(args: string[]) {
 
   const here = dirname(fileURLToPath(import.meta.url));
   const src = resolve(here, "..", "skill", "SKILL.md");
-  const destDir = join(homedir(), ".claude", "skills", "pr-tour");
+  const destDir = join(homedir(), ".claude", "skills", "jaunt");
   const dest = join(destDir, "SKILL.md");
 
   try {
     await stat(src);
   } catch {
-    console.error(`pr-tour install-skill: source not found at ${src}`);
+    console.error(`jaunt install-skill: source not found at ${src}`);
     process.exit(1);
   }
 
@@ -383,7 +391,7 @@ async function installSkill(args: string[]) {
 
   if (existed && !force) {
     console.error(
-      `pr-tour install-skill: ${dest} already exists.\n` +
+      `jaunt install-skill: ${dest} already exists.\n` +
         `  re-run with --force to overwrite.`,
     );
     process.exit(1);
@@ -393,10 +401,10 @@ async function installSkill(args: string[]) {
   await copyFile(src, dest);
 
   const verb = existed ? "updated" : "installed";
-  console.log(`pr-tour: ${verb} skill → ${dest}`);
+  console.log(`jaunt: ${verb} skill → ${dest}`);
   console.log(
     "  Claude Code will pick it up on the next session.\n" +
-      "  Use it by asking for a PR tour, or type /pr-tour.",
+      "  Use it by asking for a PR tour, or type /jaunt.",
   );
 }
 

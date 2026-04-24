@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { $ } from "bun";
 import { readLocalBlob } from "../src/git.ts";
 
-// These run against the pr-tour repo itself — HEAD is always present.
+// These run against the jaunt repo itself — HEAD is always present.
 describe("readLocalBlob", () => {
   test("reads a file at HEAD via git show", async () => {
     const headSha = (await $`git rev-parse HEAD`.quiet().text()).trim();

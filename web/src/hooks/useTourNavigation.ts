@@ -3,7 +3,7 @@ import type { Draft, PRFile, PRRef } from "../types.ts";
 import { fileStateOf } from "./useDraft.ts";
 
 function stopStorageKey(ref: PRRef) {
-  return `pr-tour:stop:${ref.owner}/${ref.repo}#${ref.number}`;
+  return `jaunt:stop:${ref.owner}/${ref.repo}#${ref.number}`;
 }
 
 function clamp(n: number, lo: number, hi: number) {

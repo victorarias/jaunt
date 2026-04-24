@@ -1410,6 +1410,27 @@ a:hover {
   font-family: var(--sans);
 }
 
+.modal .finish-field {
+  margin-top: 6px;
+}
+.modal .finish-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.modal .finish-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+.modal .finish-toggle .opt {
+  margin-left: 6px;
+}
+
 .modal-actions {
   padding: 12px 18px;
   border-top: 1px solid var(--border);

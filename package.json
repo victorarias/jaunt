@@ -1,11 +1,37 @@
 {
-  "name": "pr-tour",
-  "version": "0.0.1",
-  "type": "module",
-  "private": true,
-  "bin": {
-    "pr-tour": "./src/cli.ts"
+  "name": "jaunt",
+  "version": "0.1.0",
+  "description": "A local web app for reviewing GitHub PRs in a curated order with inline notes, written by an agent.",
+  "keywords": [
+    "github",
+    "pull-request",
+    "code-review",
+    "cli",
+    "claude",
+    "agent"
+  ],
+  "license": "AGPL-3.0-only",
+  "author": "Victor Arias",
+  "homepage": "https://github.com/victorarias/jaunt#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/victorarias/jaunt.git"
   },
+  "bugs": {
+    "url": "https://github.com/victorarias/jaunt/issues"
+  },
+  "type": "module",
+  "bin": {
+    "jaunt": "./src/cli.ts"
+  },
+  "files": [
+    "src",
+    "web/index.html",
+    "web/src",
+    "skill",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "start": "bun run src/cli.ts",
     "link": "bun link",

@@ -311,12 +311,12 @@ function logFetchFailure(
   contentsErr: string | null,
   blobErr: string | null,
 ): void {
-  // Surface both error messages on stderr so a user looking at the pr-tour
+  // Surface both error messages on stderr so a user looking at the jaunt
   // process output can see *what* gh actually said — the swallowed errors
   // used to silently turn into "file content unavailable" warnings in the
   // sidebar, with no diagnostic trail. Goes to stderr so it doesn't fight
   // the LISTENING/submit sentinel lines the CLI prints to stdout.
-  const parts = [`pr-tour: fetchFileContent failed for "${path}"`];
+  const parts = [`jaunt: fetchFileContent failed for "${path}"`];
   if (contentsErr) parts.push(`  contents API: ${contentsErr}`);
   if (blobErr) parts.push(`  blob API:     ${blobErr}`);
   console.error(parts.join("\n"));

@@ -130,6 +130,25 @@ export function useDraft(ref: PRRef | null) {
       : null;
   }, [draft]);
 
+  /**
+   * Clear the content that just got shipped (overall body, per-file notes,
+   * thread replies, line comments) while keeping reviewed marks so the
+   * reviewer can keep going without losing their progress. Persisted through
+   * the normal debounced save so the server state matches.
+   */
+  const clearSubmittedContent = useCallback(() => {
+    mutate((d) => ({
+      ...d,
+      overallBody: "",
+      fileStates: Object.fromEntries(
+        Object.entries(d.fileStates).map(([path, state]) => [
+          path,
+          { reviewed: state.reviewed, note: "", replies: {}, lineComments: {} },
+        ]),
+      ),
+    }));
+  }, [mutate]);
+
   return {
     draft,
     status,
@@ -139,6 +158,7 @@ export function useDraft(ref: PRRef | null) {
     setAnnotationReply,
     setLineComment,
     clearLocal,
+    clearSubmittedContent,
   };
 }
 

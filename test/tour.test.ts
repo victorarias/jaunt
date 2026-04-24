@@ -8,9 +8,9 @@ import { makeFile, makePayload } from "./fixtures.ts";
 const tempDirs: string[] = [];
 
 async function tempTour(yaml: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "pr-tour-test-"));
+  const dir = await mkdtemp(join(tmpdir(), "jaunt-test-"));
   tempDirs.push(dir);
-  const path = join(dir, ".pr-tour-guide.yml");
+  const path = join(dir, ".jaunt-guide.yml");
   await writeFile(path, yaml, "utf-8");
   return path;
 }

@@ -8,7 +8,7 @@ import { sampleRef } from "./fixtures.ts";
 const tempDirs: string[] = [];
 
 async function fresh(): Promise<string> {
-  const d = await mkdtemp(join(tmpdir(), "pr-tour-fb-"));
+  const d = await mkdtemp(join(tmpdir(), "jaunt-fb-"));
   tempDirs.push(d);
   return d;
 }
@@ -20,7 +20,7 @@ afterEach(async () => {
 });
 
 describe("writeFeedback", () => {
-  test("writes a file at ~/.pr-tour/<owner>_<repo>_<num>.feedback.md (under the overridden dir)", async () => {
+  test("first write creates file with owner/repo header and a timestamped submission section", async () => {
     const dir = await fresh();
     const written = await writeFeedback(sampleRef, "**Approve**\n\nLGTM", {
       dir,
@@ -30,7 +30,7 @@ describe("writeFeedback", () => {
 
     const content = await readFile(written, "utf-8");
     expect(content).toStartWith(
-      "# pr-tour feedback · acme/edge-api#4821\n_submitted 2026-04-21T14:32:00.000Z_\n\n",
+      "# jaunt feedback · acme/edge-api#4821\n\n## submission · 2026-04-21T14:32:00.000Z\n\n",
     );
     expect(content).toContain("**Approve**\n\nLGTM");
   });
@@ -43,12 +43,27 @@ describe("writeFeedback", () => {
     expect(s.isDirectory()).toBe(true);
   });
 
-  test("overwrites previous feedback", async () => {
+  test("subsequent writes append timestamped sections — earlier rounds are preserved", async () => {
     const dir = await fresh();
-    await writeFeedback(sampleRef, "first", { dir });
-    await writeFeedback(sampleRef, "second", { dir });
+    await writeFeedback(sampleRef, "first round", {
+      dir,
+      now: new Date("2026-04-21T14:32:00Z"),
+    });
+    await writeFeedback(sampleRef, "second round", {
+      dir,
+      now: new Date("2026-04-21T14:45:00Z"),
+      finish: true,
+    });
     const content = await readFile(feedbackPath(sampleRef, dir), "utf-8");
-    expect(content).toContain("second");
-    expect(content).not.toContain("first");
+    expect(content).toContain("first round");
+    expect(content).toContain("second round");
+    expect(content).toContain("## submission · 2026-04-21T14:32:00.000Z");
+    expect(content).toContain(
+      "## final submission · 2026-04-21T14:45:00.000Z",
+    );
+    // File-level header appears exactly once.
+    expect(
+      content.match(/^# jaunt feedback/gm)?.length ?? 0,
+    ).toBe(1);
   });
 });

@@ -21,7 +21,7 @@ import { makeAnnotation, makeFile, makePayload, sampleRef } from "./fixtures.ts"
 const tempDirs: string[] = [];
 
 async function tempHome(): Promise<{ dir: string }> {
-  const dir = await mkdtemp(join(tmpdir(), "pr-tour-e2e-"));
+  const dir = await mkdtemp(join(tmpdir(), "jaunt-e2e-"));
   tempDirs.push(dir);
   return { dir };
 }
@@ -99,7 +99,7 @@ describe("e2e — thread reply round-trip to agent feedback file", () => {
 
     // Step 3: submit to agent
     const composed = composeReviewBody("approve", "", reread, pr.files);
-    const result = await h.submit(composed, "agent");
+    const result = await h.submit(composed, "agent", true);
 
     expect(result.ok).toBe(true);
     if (!result.ok || result.target !== "agent") {
@@ -108,13 +108,14 @@ describe("e2e — thread reply round-trip to agent feedback file", () => {
       );
     }
     expect(result.path).toBe(feedbackPath(sampleRef, dir));
+    expect(result.finish).toBe(true);
 
     // Feedback file contains the composed body + header.
     const s = await stat(result.path);
     expect(s.isFile()).toBe(true);
     const fileContent = await readFile(result.path, "utf-8");
     expect(fileContent).toStartWith(
-      `# pr-tour feedback · ${sampleRef.owner}/${sampleRef.repo}#${sampleRef.number}\n`,
+      `# jaunt feedback · ${sampleRef.owner}/${sampleRef.repo}#${sampleRef.number}\n`,
     );
     expect(fileContent).toContain("**Approve**");
     expect(fileContent).toContain("Solid refactor overall.");
@@ -154,7 +155,7 @@ describe("e2e — thread reply round-trip to agent feedback file", () => {
       updatedAt: new Date().toISOString(),
     });
 
-    const result = await h.submit("body content", "github");
+    const result = await h.submit("body content", "github", true);
     expect(result.ok).toBe(true);
     expect(submitCalls).toHaveLength(1);
     expect(submitCalls[0]!.body).toBe("body content");

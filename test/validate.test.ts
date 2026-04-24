@@ -1,5 +1,5 @@
 /**
- * Unit tests for `pr-tour validate` — schema checks, path existence against
+ * Unit tests for `jaunt validate` — schema checks, path existence against
  * a (fake) PR payload, anchor resolution (found / missing / ambiguous), and
  * line/range bounds. Writes guides to a temp dir; no real gh.
  */
@@ -20,9 +20,9 @@ afterEach(async () => {
 });
 
 async function guideWith(yaml: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "pr-tour-validate-"));
+  const dir = await mkdtemp(join(tmpdir(), "jaunt-validate-"));
   tempDirs.push(dir);
-  const path = join(dir, ".pr-tour-guide.yml");
+  const path = join(dir, ".jaunt-guide.yml");
   await writeFile(path, yaml);
   return path;
 }

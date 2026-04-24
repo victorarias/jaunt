@@ -1,248 +1,120 @@
-# pr-tour
+# jaunt
 
-A local web app for reviewing GitHub PRs in a curated order with inline notes, synced back to the PR as a single review comment.
+Review a GitHub PR in a curated order, with an agent walking you through it.
 
-## Status: v0.5
+You ask your coding agent for a tour of a PR. The agent reads the diff, writes a little reading guide, and opens a local web app with the files laid out the way the author would have walked you through them — plan doc first, then the aggregate, then the service, and so on. Every important line has a note pinned to it. You read, you reply, you submit. The agent reads your feedback, fixes what you flagged, and hands the tour back for another round. Repeat until you're happy.
 
-- File-level notes
-- Line-level annotations (anchor, line, or start+end range) pinned to the diff
-- Per-annotation threads: agent-authored comment chains + per-user reply drafts
-- Per-file `view: diff | content` mode — plan docs can render their full text with pins instead of the diff
-- Stop-based tour UX: summary stop + per-file stops, drive bar with prev/next and a Submit review modal
-- Submit target: **GitHub** (posts review comment) or **back to agent** (writes `~/.pr-tour/<ref>.feedback.md`)
-- Verdict: approve / comment / request changes
-- Tour YAML ingestion (local file)
+It's a quiet tool. No accounts, no inbox, no notifications. The files live locally.
 
-## Quick start
+## Install
 
 ```bash
-cd ~/projects/pr-tour
-bun install
-bun run start https://github.com/owner/repo/pull/349
+bunx jaunt install-skill
 ```
 
-### Install as a global `pr-tour` command
+That's it. `bunx` fetches the latest `jaunt`, `install-skill` drops the `/jaunt` skill into `~/.claude/skills/jaunt/` so Claude Code picks it up on the next session. Requires [Bun](https://bun.sh/) and the [GitHub CLI](https://cli.github.com/) (authenticated via `gh auth login`).
 
-The `bin` field in `package.json` exposes `pr-tour` via bun's link mechanism,
-so you don't have to type `bun run src/cli.ts` every time:
+If you want `jaunt` as a standing global command instead of invoking via `bunx` every time:
 
 ```bash
-bun run link                              # symlinks ~/.bun/bin/pr-tour → ./src/cli.ts
-# ensure ~/.bun/bin is on PATH — e.g. in ~/.zshrc:
-#   export PATH="$HOME/.bun/bin:$PATH"
-
-pr-tour install-skill                     # installs the /pr-tour Claude skill
-pr-tour https://github.com/owner/repo/pull/349
-
-bun run unlink                            # to remove
+bun add -g jaunt
 ```
 
-The linked binary runs directly from the repo, so `git pull` picks up updates
-with no rebuild. (There is no fully standalone binary — the server embeds a
-live Vite dev server that reads from `web/`, so it can't be packaged into a
-single self-contained executable without a non-trivial production-server
-refactor.)
+## Use it
 
-A browser tab opens with:
-- **Top bar** — PR title, progress counter, "Push review to GitHub" button, save indicator
-- **Sidebar** — overall review note, tour summary, file list grouped by tour/other/skipped
-- **Main** — selected file's diff (shiki-highlighted), tour note above the diff, reviewed checkbox, per-file note textarea
+Open your editor in a repo where a PR is waiting. Ask your agent:
 
-Notes autosave to `~/.pr-tour/<owner>_<repo>_<num>.json` (400ms debounce).
+> "Can you give me a tour of PR #349?"
 
-## CLI argument forms
+The agent will:
 
-```
-pr-tour <pr-ref> [--guide <path>] [--no-guide]
-pr-tour validate [path] [--pr <ref>] [--offline]
-pr-tour install-skill [--force]
-```
+1. Read the PR — diff, body, linked plan docs.
+2. Write a `.jaunt-guide.yml` in the repo's root: a reading order with per-file notes and line-pinned annotations.
+3. Launch the web app and hand you the URL.
 
-**`<pr-ref>`** — one of:
+You review in the browser. Reply inline to the agent's pinned notes, add your own per-file comments, mark files as reviewed as you go. Keyboard-driven: `j`/`k` move between files, `n`/`p` step through annotations inside the current file, `s` opens the submit dialog.
 
-- `349` — number; uses the current `gh` repo
-- `owner/repo#349`
-- `owner/repo/349`
-- `https://github.com/owner/repo/pull/349`
+When you've got something for the agent, hit **Submit**. The default sends your notes back to the agent and **leaves the server up** — so you can keep reading, keep adding comments, and submit again as often as you want. Each submit appends a new section to the feedback file.
 
-**`pr-tour validate`** — parse a `.pr-tour-guide.yml` with the same loader the
-app uses and check paths + anchors + line ranges against the live PR. Exits
-non-zero on errors. Ambiguous anchors, unfetchable files, and short anchors
-surface as warnings. Use `--offline` for schema-only checks (no `gh` calls).
+When you're actually done, tick **End review after this submit** in the submit dialog. That's the signal that hands control back to the agent: the server exits, the agent reads every round of feedback you sent, addresses the points, commits the changes, and re-launches the tour on the same URL. Refresh the tab — a fresh draft, updated code, and you go again.
 
-## Tour guide format
+You can also submit to GitHub directly as a review comment, if you'd rather post publicly than iterate with the agent.
 
-If a `.pr-tour-guide.yml` (or `.yaml`) file exists in the cwd, it's applied automatically. Pass `--guide <path>` for a custom location, or `--no-guide` to ignore.
+## The guide file
+
+`.jaunt-guide.yml` is the shape the agent writes. If you ever want to hand-write one (or eyeball what the agent made), it looks like this:
 
 ```yaml
 version: 1
 
-summary: |
-  Optional prose intro shown in the sidebar — the "why" of this PR.
-  Tell the reviewer the reading strategy: "start at X, note Y, Z is generated."
+summary: >
+  Two-to-four lines telling the reader the reading strategy —
+  the "why" of this PR and where to start.
 
 files:
-  - path: docs/plans/foo.md
-    view: content                      # default: diff — use "content" for plan/design docs
-    note: Ground truth — decision tables and invariants.
+  - path: docs/plans/2026-04-18-foo.md
+    view: content                       # default is "diff"; use "content" for docs
+    note: >
+      Start here. DT-* are the decision tables, INV-* the invariants.
+      The service implements these literally.
     annotations:
-      - anchor: "## Decision table 2"  # substring match; first occurrence
-        note: The service enforces these pair rules.
-      - anchor: "INV-5"
-        note: First-writer-wins is the load-bearing invariant here.
+      - anchor: "## Decision table 2"   # pin a note to the first line containing this
+        note: The pair rules. If it's not in this table, the service rejects it.
 
-  - path: server/internal/background/service.go
-    note: OpenCall / Resolve — the behavior.
+  - path: server/internal/foo/service.go
+    note: The aggregate. Start with the enums — the rest just switches on them.
     annotations:
-      - line: 145                      # exact line number in the post-PR file
-        note: DT-2 pair-rule enforcement entry point.
-      - start: 200
-        end: 230
-        note: First-writer-wins block (INV-5).
-      - line: 312                      # threaded form — multi-comment
+      - anchor: "func (s *Service) Resolve"
         thread:
-          - "Atomic path uses a Lua script — INCR + PEXPIRE in one call."
-          - author: claude[bot]
-            body: |
-              Follow-up: if Lua is disallowed, swap for MULTI/EXEC.
-              Slightly slower, easier to reason about.
+          - First-writer-wins lives here (INV-5). The CAS enforces it.
+          - >
+            Went back and forth on retry-on-conflict — dropped it, breaks
+            idempotency when the caller's a webhook.
 
 skip:
   - server/internal/platform/postgres/sqlcgen/queries.sql.go
-  - server/internal/platform/postgres/sqlcgen/models.go
 ```
 
-**Semantics**
-- `files` entries appear first, in order, numbered, with their `note` shown above the diff
-- Files not in `files` or `skip` appear next under "Other files"
-- `skip` entries appear last under "Skipped", dimmed — nothing is ever hidden
-- `view: content` renders the full post-PR file (syntax-highlighted) instead of the diff — useful for plan/design docs whose diff is all-add and gives no structure
-- `annotations` pin one or more comments to specific lines:
-  - location — exactly one of:
-    - `anchor: "..."` — first line containing this substring (recommended; stable across edits)
-    - `line: N` — exact line number in the post-PR file
-    - `start: N, end: M` — inclusive line range
-  - content — exactly one of:
-    - `note: "..."` — single agent-authored comment (shortcut)
-    - `thread: [...]` — list of comments. Each item is either a bare string (agent-authored) or a `{ author, body }` mapping
-  - the reviewer can type a reply under each thread; replies persist in the local draft and appear in the pushed GitHub review body
-  - annotations resolve against the full post-PR file; in `diff` mode they're pinned to the matching diff row (or listed under "Annotations outside the diff" if the line isn't in any hunk)
-- Paths referenced by the guide that don't match any PR file become a warning in the sidebar
-- Currently the tour is loaded once at startup; restart the server after editing the guide
+- `files` appear in order, numbered, with notes above the code.
+- `view: content` renders the full post-PR file instead of a diff — right for design docs where the diff is all-add.
+- Annotations take one of `anchor:` (substring match, recommended), `line: N`, or `start: N, end: M`. Prefer anchors — they survive edits.
+- `skip` files render dimmed at the bottom; good for generated code.
 
-## Submit flow
-
-Hitting "Submit review" opens a modal with three things to pick:
-
-- **Send to**
-  - `GitHub` — posts a single review comment on the PR via `gh`
-  - `back to agent` — writes the composed body to `~/.pr-tour/<owner>_<repo>_<num>.feedback.md` so a parent agent that invoked `pr-tour` can pick it up
-- **Verdict** — Approve / Comment / Request changes
-- **Summary comment** — optional; falls back to the sidebar's overall note
-
-The composed body looks like:
-
-```
-**Approve** | **Comment** | **Request changes**
-
-{summary comment}
-
----
-
-### Notes by file
-
-**path/to/foo.ts**
-
-{per-file note}
-
-_on line 145:_
-
-{reply to that thread}
-
-**path/to/bar.ts**
-
-{per-file note}
-```
-
-After success, the local draft (notes + replies) is cleared.
-
-### Agent invocation loop
-
-An agent can drive a review by spawning `pr-tour <ref>`, waiting for the user
-to submit with `target=agent`, and then reading the resulting file:
-
-```
-~/.pr-tour/<owner>_<repo>_<num>.feedback.md
-```
-
-The file starts with a header naming the PR and submission time, followed by
-the review body. The draft is cleared on success — re-running the CLI opens a
-fresh session.
-
-## Claude Code skill
-
-The repo ships with a `/pr-tour` skill that teaches an agent how to produce a
-`.pr-tour-guide.yml` for a given PR — file ordering, per-file notes, line-level
-annotations (anchors preferred), and `thread:` forms for pre-empting pushback.
-The skill branches explicitly on whether the agent authored the PR in the same
-session or is coming to it fresh (in which case it is instructed to read the
-full diff and PR body before writing anything).
-
-Install it into `~/.claude/skills/pr-tour/`:
+Validate the guide any time with:
 
 ```bash
-bun run src/cli.ts install-skill          # or: pr-tour install-skill
-bun run src/cli.ts install-skill --force  # overwrite an existing install
+jaunt validate
 ```
 
-Source of truth lives at `skill/SKILL.md` in this repo. Re-run with `--force`
-after pulling updates.
-
-## Not yet built
-
-- A Claude skill that spawns `pr-tour`, awaits the `agent` feedback file, and threads the reply back into the agent's loop
-- Posting/fetching the tour as a pinned PR comment (so reviewers share the same reading order)
-- Filter/search across files
-- Two-way sync (pulling existing GH threads back in)
-
-## Development
+## Commands
 
 ```bash
+jaunt <pr-ref>                  # launch the app (auto-opens browser)
+jaunt <pr-ref> --host           # bind to all interfaces (remote dev / codespaces)
+jaunt <pr-ref> --port 5174      # bind a specific port
+jaunt <pr-ref> --no-guide       # ignore any local guide, show files alphabetically
+jaunt <pr-ref> --guide <path>   # use an explicit guide file
+
+jaunt validate [path]           # check schema + paths + anchors against the PR
+jaunt validate --offline        # schema-only, no gh calls
+jaunt install-skill [--force]   # install the /jaunt Claude skill
+```
+
+PR refs accept any of `349`, `owner/repo#349`, `owner/repo/349`, or the full `https://github.com/.../pull/349` URL. A bare number resolves against the current repo via `gh`.
+
+## Develop from source
+
+```bash
+git clone https://github.com/victorarias/jaunt.git
+cd jaunt
 bun install
-bun run typecheck     # tsc --noEmit
-bun run test:unit     # fast: composer, parser, handlers, integration e2e
-bun run test:ui       # slow: real Chromium + real Vite server (see below)
-bun test              # both
-bun run check         # typecheck + test:unit (no browser)
+bun run link                    # symlinks `jaunt` → ./src/cli.ts
+bun test                        # run the test suite
+bun run typecheck
 ```
 
-### Tests
+The linked binary runs straight from the repo; `git pull` picks up updates with no rebuild.
 
-**Unit + integration** (`test/*.test.ts`, 27 tests, ~40ms):
-- `compose.test.ts` — review-body composer
-- `tour.test.ts` — YAML parsing (legacy `note:` and threaded `thread:` forms) and tour application
-- `feedback.test.ts` — feedback-file writer
-- `api.test.ts` — api-handler dispatch (GitHub vs agent, cache, error path)
-- `e2e.test.ts` — handler-level round-trip: save a draft with a thread reply, submit to agent, assert the feedback file on disk
+## License
 
-**UI end-to-end** (`test/browser/*.e2e.test.ts`, 2 tests, ~3s):
-
-Boots the real Vite dev server with fake deps (GitHub is mocked, drafts
-and feedback go to a temp dir) and drives Chromium via Playwright through:
-
-- Tour navigation (stop 0 → stop 1 → stop 2, `Start tour` / `Next step`)
-- "Mark reviewed on advance" behaviour and the `N/M` Submit button counter
-- Inline thread rendering, reply textarea + debounced autosave
-- Per-file note textarea + autosave
-- Submit modal with target toggle (GitHub / back to agent)
-- Agent path: feedback file written to disk with the composed body
-- GitHub path: `submitReviewComment` mock called, no feedback file written
-
-The UI test requires Playwright + a Chromium build:
-
-```bash
-bunx playwright install chromium   # one-time, ~250 MB, cached in ~/Library/Caches/ms-playwright
-```
-
-If the browser isn't installed, `bun run test:ui` will fail; `bun run check`
-doesn't touch the browser.
+AGPL-3.0-only. See [LICENSE](LICENSE).

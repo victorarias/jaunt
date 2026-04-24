@@ -4,12 +4,12 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import type { Draft, PRRef } from "./types.ts";
 
 export type DraftStoreOptions = {
-  /** Override the directory. Defaults to ~/.pr-tour. */
+  /** Override the directory. Defaults to ~/.jaunt. */
   dir?: string;
 };
 
 function resolveDir(opts?: DraftStoreOptions): string {
-  return opts?.dir ?? join(homedir(), ".pr-tour");
+  return opts?.dir ?? join(homedir(), ".jaunt");
 }
 
 export function draftPath(ref: PRRef, opts?: DraftStoreOptions): string {

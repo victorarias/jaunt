@@ -91,7 +91,7 @@ function defaultPayload(): PRPayload {
 async function bootstrap(
   payload: PRPayload = defaultPayload(),
 ): Promise<Harness> {
-  const dir = await mkdtemp(join(tmpdir(), "pr-tour-ui-e2e-"));
+  const dir = await mkdtemp(join(tmpdir(), "jaunt-ui-e2e-"));
 
   const github = { submitCalls: [] as Array<{ body: string }> };
 
@@ -102,7 +102,8 @@ async function bootstrap(
       github.submitCalls.push({ body });
       return `https://github.com/${sampleRef.owner}/${sampleRef.repo}/pull/${sampleRef.number}#pullrequestreview-1`;
     },
-    writeFeedback: (ref, body) => writeFeedback(ref, body, { dir }),
+    writeFeedback: (ref, body, opts) =>
+      writeFeedback(ref, body, { dir, finish: opts?.finish }),
     loadDraft: (ref) => loadDraft(ref, { dir }),
     saveDraft: (d) => saveDraft(d, { dir }),
     clearDraft: (ref) => clearDraft(ref, { dir }),
@@ -219,7 +220,12 @@ describe("ui e2e — real browser round-trip", () => {
         // the button is wired and the click is a no-op.
         await modal.locator(".seg.wide button").nth(1).click();
 
-        // Submit (button label is "Send to agent →").
+        // Tick "End review after this submit" so the session terminates and
+        // the success modal is the one shown (the default is off, which
+        // closes the dialog after a mid-review submit).
+        await modal.locator(".finish-toggle input[type=\"checkbox\"]").check();
+
+        // Submit (button label is "Send & end review →" now).
         await modal
           .locator(".modal-actions .btn.primary")
           .click();
@@ -235,7 +241,7 @@ describe("ui e2e — real browser round-trip", () => {
         const path = feedbackPath(sampleRef, fx.dir);
         const content = await readFile(path, "utf-8");
         expect(content.startsWith(
-          `# pr-tour feedback · ${sampleRef.owner}/${sampleRef.repo}#${sampleRef.number}\n`,
+          `# jaunt feedback · ${sampleRef.owner}/${sampleRef.repo}#${sampleRef.number}\n`,
         )).toBe(true);
         expect(content).toContain("**Approve**");
         expect(content).toContain("**src/a.ts**");
@@ -278,6 +284,9 @@ describe("ui e2e — real browser round-trip", () => {
 
         // Pick the "Comment" verdict (second verdict button).
         await modal.locator(".verdict-btn").nth(1).click();
+
+        // Tick finish so the session ends + success modal appears.
+        await modal.locator(".finish-toggle input[type=\"checkbox\"]").check();
 
         // Post.
         await modal
@@ -343,6 +352,14 @@ describe("ui e2e — real browser round-trip", () => {
         // Keyboard: 3 picks request_changes.
         await fx.page.keyboard.press("3");
         expect(await hasClass(verdictButtons.nth(2), "active")).toBe(true);
+
+        // Keyboard: F ticks "end review" so the session terminates.
+        await fx.page.keyboard.press("f");
+        expect(
+          await modal
+            .locator(".finish-toggle input[type=\"checkbox\"]")
+            .isChecked(),
+        ).toBe(true);
 
         // Submit via Meta+Enter — this is where the stale closure used to
         // silently revert to (agent, approve).
@@ -637,6 +654,94 @@ describe("ui e2e — real browser round-trip", () => {
           .first()
           .textContent();
         expect(threadBody ?? "").toContain("Out-of-diff note on line 7.");
+
+        expect(fx.pageErrors).toEqual([]);
+        expect(fx.consoleErrors).toEqual([]);
+      } finally {
+        await fx.cleanup();
+      }
+    },
+    90_000,
+  );
+
+  test(
+    "mid-review submit keeps the server alive and appends to the feedback file; reviewed marks survive",
+    async () => {
+      const fx = await bootstrap();
+      try {
+        // Walk file A, type a reply, mark it reviewed, submit without finish.
+        await fx.page.locator(".drive .next").click();
+        await fx.page
+          .locator("#stop-1")
+          .waitFor({ state: "visible", timeout: 5_000 });
+
+        const replyA = fx.page.locator("#stop-1 .thread-reply textarea");
+        await replyA.click();
+        await replyA.fill("First-round note on A.");
+
+        // Advance to stop-2, which marks A reviewed on leave.
+        await fx.page.locator(".drive .next").click();
+        await fx.page
+          .locator("#stop-2")
+          .waitFor({ state: "visible", timeout: 5_000 });
+
+        // Debounce buffer so the draft actually persists.
+        await fx.page.waitForTimeout(800);
+
+        // Submit without finish (default).
+        await fx.page.locator(".submit-review").click();
+        const modal1 = fx.page.locator(".modal");
+        await modal1.waitFor({ state: "visible" });
+        expect(
+          await modal1
+            .locator(".finish-toggle input[type=\"checkbox\"]")
+            .isChecked(),
+        ).toBe(false);
+        await modal1.locator(".modal-actions .btn.primary").click();
+
+        // Dialog closes (no success modal), app remains interactive.
+        await modal1.waitFor({ state: "hidden", timeout: 5_000 });
+        expect(await fx.page.locator(".modal.success").count()).toBe(0);
+
+        // File A's reviewed mark survived the mid-review submit — the 1/2
+        // counter on the Submit button proves it.
+        const count = fx.page.locator(".submit-review .review-count");
+        expect((await textOf(count)).trim()).toBe("1/2");
+
+        // Feedback file exists with the first submission section.
+        const path = feedbackPath(sampleRef, fx.dir);
+        const after1 = await readFile(path, "utf-8");
+        expect(after1).toContain("## submission · ");
+        expect(after1).toContain("First-round note on A.");
+
+        // Second round: type a note on B, tick finish, submit. Both sections
+        // must be present in the file afterward.
+        const noteB = fx.page.locator('#stop-2 textarea[id^="note-"]');
+        await noteB.click();
+        await noteB.fill("Second-round note on B.");
+        await fx.page.waitForTimeout(800);
+
+        await fx.page.locator(".submit-review").click();
+        const modal2 = fx.page.locator(".modal");
+        await modal2.waitFor({ state: "visible" });
+        await modal2
+          .locator(".finish-toggle input[type=\"checkbox\"]")
+          .check();
+        await modal2.locator(".modal-actions .btn.primary").click();
+
+        await fx.page
+          .locator(".modal.success")
+          .waitFor({ state: "visible", timeout: 10_000 });
+
+        const after2 = await readFile(path, "utf-8");
+        expect(after2).toContain("First-round note on A.");
+        expect(after2).toContain("Second-round note on B.");
+        expect(after2).toContain("## submission · ");
+        expect(after2).toContain("## final submission · ");
+        // File-level header should only appear once even though we wrote twice.
+        expect(
+          after2.match(/^# jaunt feedback/gm)?.length ?? 0,
+        ).toBe(1);
 
         expect(fx.pageErrors).toEqual([]);
         expect(fx.consoleErrors).toEqual([]);

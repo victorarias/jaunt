@@ -111,7 +111,14 @@ export type Draft = {
 
 export type SubmitTarget = "github" | "agent";
 
+/**
+ * `finish` carries the user's "end review after this submit" toggle. When
+ * true, the session is over: the server exits and the draft is cleared.
+ * When false, the submit is an intermediate note — the server stays up,
+ * the feedback file is appended-to, and the draft keeps reviewed marks
+ * so the reviewer can keep going.
+ */
 export type SubmitResult =
-  | { ok: true; target: "github"; url: string }
-  | { ok: true; target: "agent"; path: string }
+  | { ok: true; target: "github"; url: string; finish: boolean }
+  | { ok: true; target: "agent"; path: string; finish: boolean }
   | { ok: false; error: string };

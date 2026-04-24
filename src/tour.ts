@@ -29,7 +29,7 @@ export type Tour = {
   skip: string[];
 };
 
-const CANDIDATE_NAMES = [".pr-tour-guide.yml", ".pr-tour-guide.yaml"];
+const CANDIDATE_NAMES = [".jaunt-guide.yml", ".jaunt-guide.yaml"];
 
 export async function resolveTourPath(
   explicit: string | undefined,

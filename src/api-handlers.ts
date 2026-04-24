@@ -14,7 +14,11 @@ export type ApiDeps = {
   fetchPR: (ref: PRRef) => Promise<PRPayload>;
   fetchFileContent: RemoteFetch;
   submitReviewComment: (ref: PRRef, body: string) => Promise<string>;
-  writeFeedback: (ref: PRRef, body: string) => Promise<string>;
+  writeFeedback: (
+    ref: PRRef,
+    body: string,
+    opts?: { finish?: boolean },
+  ) => Promise<string>;
   loadDraft: (ref: PRRef) => Promise<Draft>;
   saveDraft: (draft: Draft) => Promise<Draft>;
   clearDraft: (ref: PRRef) => Promise<void>;
@@ -25,7 +29,11 @@ export type ApiHandlers = {
   refetchContent(paths: string[]): Promise<PRPayload>;
   getDraft(): Promise<Draft>;
   putDraft(draft: Draft): Promise<Draft>;
-  submit(body: string, target: SubmitTarget): Promise<SubmitResult>;
+  submit(
+    body: string,
+    target: SubmitTarget,
+    finish: boolean,
+  ): Promise<SubmitResult>;
 };
 
 export function createApiHandlers(opts: {
@@ -102,16 +110,16 @@ export function createApiHandlers(opts: {
     refetchContent,
     getDraft: () => opts.deps.loadDraft(opts.ref),
     putDraft: (draft) => opts.deps.saveDraft(draft),
-    async submit(body, target) {
+    async submit(body, target, finish) {
       try {
         if (target === "github") {
           const url = await opts.deps.submitReviewComment(opts.ref, body);
-          await opts.deps.clearDraft(opts.ref);
-          return { ok: true, target: "github", url };
+          if (finish) await opts.deps.clearDraft(opts.ref);
+          return { ok: true, target: "github", url, finish };
         }
-        const path = await opts.deps.writeFeedback(opts.ref, body);
-        await opts.deps.clearDraft(opts.ref);
-        return { ok: true, target: "agent", path };
+        const path = await opts.deps.writeFeedback(opts.ref, body, { finish });
+        if (finish) await opts.deps.clearDraft(opts.ref);
+        return { ok: true, target: "agent", path, finish };
       } catch (err) {
         return {
           ok: false,

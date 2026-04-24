@@ -4,7 +4,7 @@ import type { ContentResult } from "./types.ts";
 /**
  * Read `<sha>:<path>` from the local git object store via `git show`.
  *
- * This is the primary content source when pr-tour runs inside the repo
+ * This is the primary content source when jaunt runs inside the repo
  * where the PR branch has been pushed or fetched — which is the common
  * case for same-session authors. Because we match by SHA, not worktree
  * path, there's no risk of reading a rebased, dirty, or wrong-branch

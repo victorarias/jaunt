@@ -35,11 +35,12 @@ export async function saveDraft(draft: Draft): Promise<Draft> {
 export async function submitReview(
   body: string,
   target: SubmitTarget,
+  finish: boolean,
 ): Promise<SubmitResult> {
   const resp = await fetch("/api/submit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ body, target }),
+    body: JSON.stringify({ body, target, finish }),
   });
   return resp.json();
 }

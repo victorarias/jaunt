@@ -15,7 +15,7 @@ export type ValidateDeps = {
 };
 
 /**
- * Validate a `.pr-tour-guide.yml` against either just its schema (offline)
+ * Validate a `.jaunt-guide.yml` against either just its schema (offline)
  * or against the live PR (paths + anchors + line ranges).
  *
  * Schema errors propagate as thrown exceptions from `loadTour`. This function
