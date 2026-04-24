@@ -254,19 +254,19 @@ Write `.jaunt-guide.yml` in the cwd (not in the jaunt install directory; the rev
 After writing, run:
 
 ```bash
-jaunt validate
+bunx @victorarias/jaunt validate
 ```
 
-If `jaunt` isn't on PATH (the user may have installed via `bunx` without a global add), use `bunx @victorarias/jaunt validate` — same command, same output.
+Shorthand: if the user has done `bun add -g @victorarias/jaunt` so the `jaunt` binary is on PATH, you can type `jaunt validate` instead — same command. When in doubt, use the `bunx @victorarias/jaunt` form; it always works.
 
-Useful variants: `jaunt validate --offline` (schema-only — no `gh` calls) and `jaunt validate --pr <ref>` (check against a specific PR instead of the current branch's).
+Useful variants: `bunx @victorarias/jaunt validate --offline` (schema-only — no `gh` calls) and `bunx @victorarias/jaunt validate --pr <ref>` (check against a specific PR instead of the current branch's).
 
 It parses the YAML with the same loader the app uses, then reports:
 
 - **Errors** (exit non-zero) — schema problems, paths in `files` not in the PR, anchors that don't resolve, `line:` / `end:` past end of file, a path listed in both `files` and `skip`, duplicate `files` entries. Fix and re-run until `validate` is clean.
 - **Warnings** — ambiguous anchors (first substring match wins; lengthen if that's not what you want), `skip:` entries not in the PR, very short anchors, `view: content` on files the app can't fetch. Act on these unless you have a specific reason not to.
 
-`jaunt validate` is the contract — it catches everything the app will silently misinterpret. Use it as the source of truth for YAML correctness; schema checks the parser does here are the same ones the app does at runtime.
+`validate` is the contract — it catches everything the app will silently misinterpret. Use it as the source of truth for YAML correctness; schema checks the parser does here are the same ones the app does at runtime.
 
 ### 9. Ask the user how to run it
 
@@ -284,13 +284,13 @@ Skip the question when the user's original request already made the mode obvious
 Start the server yourself — don't leave it as a command for the user to copy.
 
 ```bash
-jaunt <pr-ref>                   # user's own machine; auto-opens browser
-jaunt <pr-ref> --host            # remote dev (ssh, codespace, sandbox);
-                                 # prints http://<hostname>:5174/, no auto-open
-jaunt <pr-ref> --port 5174       # bind a specific port (see re-launch below)
+bunx @victorarias/jaunt <pr-ref>                # user's own machine; auto-opens browser
+bunx @victorarias/jaunt <pr-ref> --host         # remote dev (ssh, codespace, sandbox);
+                                                # prints http://<hostname>:5174/, no auto-open
+bunx @victorarias/jaunt <pr-ref> --port 5174    # bind a specific port (see re-launch below)
 ```
 
-If `jaunt` isn't on PATH (command-not-found), use `bunx @victorarias/jaunt <pr-ref>` with the same flags — fetches the latest from npm and runs it. The `jaunt:` sentinel lines below are identical either way.
+Shorthand: if the user has `jaunt` on PATH (via `bun add -g @victorarias/jaunt`), you can drop the `bunx @victorarias/` prefix and type `jaunt <pr-ref>` instead. Same behaviour, same sentinel output — the `jaunt:` prefix in stdout comes from the binary name, not the invocation. When in doubt, use `bunx @victorarias/jaunt` — it always resolves.
 
 **Always launch the server as a backgrounded task.** It's a long-running process that exits when the reviewer ends the review. A normal blocking Bash call will hang and you'll never see the URL to report — that's a dead end in both modes. Whatever your shell tool's "run in background" affordance is (e.g. `run_in_background: true`), use it. Both hand-off and wait-and-act background the same way; they only differ in what you do *after* the server is up.
 
@@ -322,13 +322,13 @@ Both modes: background the launch, tail for `LISTENING`, report the URL. After t
 - **hand-off**: done. The backgrounded process will exit on its own when the user ends the review; you don't need to watch for it.
 
 - **wait-and-act**: watch the task until **the process exits**. Intermediate `finish=false` sentinel lines are informational only — the review is still in progress. When the process exits (which only happens after a `finish=true` submit), grep the final output for which path it took:
-  1. Ended with `FEEDBACK_READY …finish=true`: read `~/.jaunt/<owner>_<repo>_<num>.feedback.md` (which contains every round the reviewer submitted, ordered oldest-first), act on the feedback. After you're done, **re-launch on the same port**: `jaunt <ref> --port <N>` (or `bunx @victorarias/jaunt <ref> --port <N>` if `jaunt` isn't on PATH) where `<N>` is the port from the original `LISTENING` line (again as a backgrounded task, again tail for the new `LISTENING`). Tell the user the server's back up and to refresh their browser tab to see the updated code and leave follow-up comments.
+  1. Ended with `FEEDBACK_READY …finish=true`: read `~/.jaunt/<owner>_<repo>_<num>.feedback.md` (which contains every round the reviewer submitted, ordered oldest-first), act on the feedback. After you're done, **re-launch on the same port**: `bunx @victorarias/jaunt <ref> --port <N>` where `<N>` is the port from the original `LISTENING` line (again as a backgrounded task, again tail for the new `LISTENING`). Tell the user the server's back up and to refresh their browser tab to see the updated code and leave follow-up comments.
   2. Ended with `REVIEW_POSTED …finish=true`: user posted the final round to GitHub — acknowledge, no local action, no re-launch needed.
   3. Long silence with no exit: the user is either still reviewing or closed the browser without ending. Ask before killing — don't assume abandonment.
 
 The re-launch makes the loop feel continuous: same URL, user refreshes, drafts are fresh (they were cleared on the final submit), and the new process picks up whatever commits you just made.
 
-**"Open the tour" / "open it" means launch the app.** The YAML is an internal artifact — the user wants the running web page, not the file. So: when the user asks to "open the tour", "open it", "show me", or any similar verbage after a tour has been created, spawn `jaunt <ref>` (or `bunx @victorarias/jaunt <ref>` if needed, with `--host` as appropriate) — launch the app rather than displaying the YAML. If the app is already running, tell them the URL; don't restart.
+**"Open the tour" / "open it" means launch the app.** The YAML is an internal artifact — the user wants the running web page, not the file. So: when the user asks to "open the tour", "open it", "show me", or any similar verbage after a tour has been created, spawn `bunx @victorarias/jaunt <ref>` (with `--host` as appropriate) — launch the app rather than displaying the YAML. If the app is already running, tell them the URL; don't restart.
 
 **Heads up: the tour is loaded once at startup.** If you (or the user) edit `.jaunt-guide.yml` after launching, the running server won't pick up the change — kill it (Ctrl-C) and re-run the launch command. Tell the user this when you report, so they don't wonder why a tweak isn't showing up.
 
@@ -337,7 +337,7 @@ The re-launch makes the loop feel continuous: same URL, user refreshes, drafts a
 Tell the user, tersely:
 - The file you wrote and where
 - Count of tour / other / skip entries
-- The `jaunt validate` result (clean / N warnings)
+- The `validate` result (clean / N warnings)
 - The URL the app is serving at (localhost, or the remote hostname if you used `--host`)
 - The "re-run if the YAML changes" reminder
 
@@ -356,5 +356,5 @@ Tell the user, tersely:
 - **Prefer anchors over line numbers.** Anchors survive edits.
 - **Use `>` (folded) for prose.** `|` renders hard-wrapped YAML lines as visible `<br>`s in the UI.
 - **Scale the tour to the PR.** 20 lines of notes on a 5-line change feels like noise.
-- **Trust `jaunt validate`.** It catches the exact mistakes the app would silently misinterpret.
+- **Trust `bunx @victorarias/jaunt validate`.** It catches the exact mistakes the app would silently misinterpret.
 - **The guide is a local artifact.** Posting it to GitHub or to a shared location is out of scope — this skill is local-file only.
