@@ -9,16 +9,18 @@ It's a quiet tool. No accounts, no inbox, no notifications. The files live local
 ## Install
 
 ```bash
-bunx jaunt install-skill
+bunx @victorarias/jaunt install-skill
 ```
 
-That's it. `bunx` fetches the latest `jaunt`, `install-skill` drops the `/jaunt` skill into `~/.claude/skills/jaunt/` so Claude Code picks it up on the next session. Requires [Bun](https://bun.sh/) and the [GitHub CLI](https://cli.github.com/) (authenticated via `gh auth login`).
+That's it. `bunx` fetches the latest `@victorarias/jaunt`, `install-skill` drops the `/jaunt` skill into `~/.claude/skills/jaunt/` so Claude Code picks it up on the next session. Requires [Bun](https://bun.sh/) and the [GitHub CLI](https://cli.github.com/) (authenticated via `gh auth login`).
 
 If you want `jaunt` as a standing global command instead of invoking via `bunx` every time:
 
 ```bash
-bun add -g jaunt
+bun add -g @victorarias/jaunt
 ```
+
+Either way, the command on your PATH is just `jaunt`.
 
 ## Use it
 

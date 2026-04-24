@@ -1,6 +1,9 @@
 {
-  "name": "jaunt",
+  "name": "@victorarias/jaunt",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "A local web app for reviewing GitHub PRs in a curated order with inline notes, written by an agent.",
   "keywords": [
     "github",
