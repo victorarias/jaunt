@@ -404,7 +404,9 @@ async function installSkill(args: string[]) {
   console.log(`jaunt: ${verb} skill → ${dest}`);
   console.log(
     "  Claude Code will pick it up on the next session.\n" +
-      "  Use it by asking for a PR tour, or type /jaunt.",
+      "  Use it by asking for a PR tour, or type /jaunt.\n" +
+      "  Tip: `bun add -g @victorarias/jaunt` puts `jaunt` on PATH so the skill's\n" +
+      "  launch commands work without bunx prefixes.",
   );
 }
 

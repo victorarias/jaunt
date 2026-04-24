@@ -257,6 +257,8 @@ After writing, run:
 jaunt validate
 ```
 
+If `jaunt` isn't on PATH (the user may have installed via `bunx` without a global add), use `bunx @victorarias/jaunt validate` — same command, same output.
+
 Useful variants: `jaunt validate --offline` (schema-only — no `gh` calls) and `jaunt validate --pr <ref>` (check against a specific PR instead of the current branch's).
 
 It parses the YAML with the same loader the app uses, then reports:
@@ -288,7 +290,9 @@ jaunt <pr-ref> --host            # remote dev (ssh, codespace, sandbox);
 jaunt <pr-ref> --port 5174       # bind a specific port (see re-launch below)
 ```
 
-**Always launch `jaunt` as a backgrounded task.** `jaunt` is a long-running server that exits when the reviewer ends the review. A normal blocking Bash call will hang and you'll never see the URL to report — that's a dead end in both modes. Whatever your shell tool's "run in background" affordance is (e.g. `run_in_background: true`), use it. Both hand-off and wait-and-act background the same way; they only differ in what you do *after* the server is up.
+If `jaunt` isn't on PATH (command-not-found), use `bunx @victorarias/jaunt <pr-ref>` with the same flags — fetches the latest from npm and runs it. The `jaunt:` sentinel lines below are identical either way.
+
+**Always launch the server as a backgrounded task.** It's a long-running process that exits when the reviewer ends the review. A normal blocking Bash call will hang and you'll never see the URL to report — that's a dead end in both modes. Whatever your shell tool's "run in background" affordance is (e.g. `run_in_background: true`), use it. Both hand-off and wait-and-act background the same way; they only differ in what you do *after* the server is up.
 
 **Startup sentinel** — on bind, `jaunt` prints:
 
@@ -318,15 +322,15 @@ Both modes: background the launch, tail for `LISTENING`, report the URL. After t
 - **hand-off**: done. The backgrounded process will exit on its own when the user ends the review; you don't need to watch for it.
 
 - **wait-and-act**: watch the task until **the process exits**. Intermediate `finish=false` sentinel lines are informational only — the review is still in progress. When the process exits (which only happens after a `finish=true` submit), grep the final output for which path it took:
-  1. Ended with `FEEDBACK_READY …finish=true`: read `~/.jaunt/<owner>_<repo>_<num>.feedback.md` (which contains every round the reviewer submitted, ordered oldest-first), act on the feedback. After you're done, **re-launch on the same port**: `jaunt <ref> --port <N>` where `<N>` is the port from the original `LISTENING` line (again as a backgrounded task, again tail for the new `LISTENING`). Tell the user the server's back up and to refresh their browser tab to see the updated code and leave follow-up comments.
+  1. Ended with `FEEDBACK_READY …finish=true`: read `~/.jaunt/<owner>_<repo>_<num>.feedback.md` (which contains every round the reviewer submitted, ordered oldest-first), act on the feedback. After you're done, **re-launch on the same port**: `jaunt <ref> --port <N>` (or `bunx @victorarias/jaunt <ref> --port <N>` if `jaunt` isn't on PATH) where `<N>` is the port from the original `LISTENING` line (again as a backgrounded task, again tail for the new `LISTENING`). Tell the user the server's back up and to refresh their browser tab to see the updated code and leave follow-up comments.
   2. Ended with `REVIEW_POSTED …finish=true`: user posted the final round to GitHub — acknowledge, no local action, no re-launch needed.
   3. Long silence with no exit: the user is either still reviewing or closed the browser without ending. Ask before killing — don't assume abandonment.
 
 The re-launch makes the loop feel continuous: same URL, user refreshes, drafts are fresh (they were cleared on the final submit), and the new process picks up whatever commits you just made.
 
-**"Open the tour" / "open it" means launch the app.** The YAML is an internal artifact — the user wants the running web page, not the file. So: when the user asks to "open the tour", "open it", "show me", or any similar verbage after a tour has been created, spawn `jaunt <ref>` (with `--host` as appropriate) — launch the app rather than displaying the YAML. If the app is already running, tell them the URL; don't restart.
+**"Open the tour" / "open it" means launch the app.** The YAML is an internal artifact — the user wants the running web page, not the file. So: when the user asks to "open the tour", "open it", "show me", or any similar verbage after a tour has been created, spawn `jaunt <ref>` (or `bunx @victorarias/jaunt <ref>` if needed, with `--host` as appropriate) — launch the app rather than displaying the YAML. If the app is already running, tell them the URL; don't restart.
 
-**Heads up: the tour is loaded once at startup.** If you (or the user) edit `.jaunt-guide.yml` after launching, the running server won't pick up the change — kill it (Ctrl-C) and re-run `jaunt <pr-ref>`. Tell the user this when you report, so they don't wonder why a tweak isn't showing up.
+**Heads up: the tour is loaded once at startup.** If you (or the user) edit `.jaunt-guide.yml` after launching, the running server won't pick up the change — kill it (Ctrl-C) and re-run the launch command. Tell the user this when you report, so they don't wonder why a tweak isn't showing up.
 
 ### 11. Report
 
