@@ -83,20 +83,31 @@ function Review({
 
   const mainRef = useRef<HTMLDivElement>(null);
 
-  const scrollToId = useCallback((id: string) => {
-    requestAnimationFrame(() => {
-      const el = document.getElementById(id);
-      const scroller = mainRef.current;
-      if (el && scroller) {
-        const top =
+  const scrollToId = useCallback(
+    (id: string, align: "top" | "center" = "top") => {
+      requestAnimationFrame(() => {
+        const el = document.getElementById(id);
+        const scroller = mainRef.current;
+        if (!el || !scroller) return;
+        const elTop =
           el.getBoundingClientRect().top -
           scroller.getBoundingClientRect().top +
-          scroller.scrollTop -
-          12;
+          scroller.scrollTop;
+        const top =
+          align === "center" ? elTop - scroller.clientHeight / 2 : elTop - 12;
         scroller.scrollTo({ top, behavior: "smooth" });
-      }
-    });
-  }, []);
+        el.classList.remove("flash");
+        void (el as HTMLElement).offsetWidth;
+        el.classList.add("flash");
+        el.addEventListener(
+          "animationend",
+          () => el.classList.remove("flash"),
+          { once: true },
+        );
+      });
+    },
+    [],
+  );
 
   const nav = useTourNavigation({
     ref: pr.meta.ref,
@@ -289,6 +300,7 @@ function Review({
         totalFiles={files.length}
         reviewSubmitted={reviewSubmitted}
         hasAnnotations={nav.hasAnyAnnotations}
+        canNext={nav.canNext}
         canPrevAnn={nav.canPrevAnn}
         canNextAnn={nav.canNextAnn}
         onPrev={nav.prev}

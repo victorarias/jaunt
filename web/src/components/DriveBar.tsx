@@ -8,6 +8,7 @@ type Props = {
   totalFiles: number;
   reviewSubmitted: boolean;
   hasAnnotations: boolean;
+  canNext: boolean;
   canPrevAnn: boolean;
   canNextAnn: boolean;
   onPrev: () => void;
@@ -28,6 +29,7 @@ export function DriveBar({
   totalFiles,
   reviewSubmitted,
   hasAnnotations,
+  canNext,
   canPrevAnn,
   canNextAnn,
   onPrev,
@@ -128,7 +130,8 @@ export function DriveBar({
         type="button"
         className="next"
         onClick={onNext}
-        disabled={currentStop >= lastStop}
+        disabled={!canNext}
+        title="Next unreviewed file"
       >
         {nextLabel} →<span className="kbd">J</span>
       </button>

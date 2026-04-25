@@ -83,8 +83,21 @@ export function DiffView({
         : [],
     [file.content, outsideDiff],
   );
+  // When full content is unavailable we render outside-diff annotations as a
+  // bare list at the top of the file. Sort that list by lineStart so it lines
+  // up with useTourNavigation's annOrder comparator — otherwise N/P would
+  // appear to skip annotations on files whose annotation array is not in line
+  // order.
   const unresolvedOutside = useMemo(
-    () => (file.content === null ? outsideDiff : []),
+    () =>
+      file.content === null
+        ? [...outsideDiff].sort(
+            (a, b) =>
+              a.annotation.lineStart - b.annotation.lineStart ||
+              a.annotation.lineEnd - b.annotation.lineEnd ||
+              a.index - b.index,
+          )
+        : [],
     [file.content, outsideDiff],
   );
   const sections = useMemo<Section[]>(() => {
