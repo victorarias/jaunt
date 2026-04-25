@@ -87,6 +87,142 @@ describe("validateTour — schema-only (offline)", () => {
     expect(report.errors).toEqual([]);
     expect(report.warnings).toEqual([]);
   });
+
+  test("clean mermaid in summary, note, and thread parses without errors", async () => {
+    const guidePath = await guideWith(
+      [
+        `version: 1`,
+        `summary: |`,
+        `  Walk-through.`,
+        ``,
+        `  \`\`\`mermaid`,
+        `  flowchart LR`,
+        `    A --> B`,
+        `  \`\`\``,
+        `files:`,
+        `  - path: src/a.ts`,
+        `    note: |`,
+        `      Heads-up:`,
+        ``,
+        `      \`\`\`mermaid`,
+        `      stateDiagram-v2`,
+        `        [*] --> Idle`,
+        `        Idle --> Running`,
+        `      \`\`\``,
+        `    annotations:`,
+        `      - line: 1`,
+        `        note: |`,
+        `          See:`,
+        ``,
+        `          \`\`\`mermaid`,
+        `          sequenceDiagram`,
+        `            A->>B: hi`,
+        `          \`\`\``,
+        ``,
+      ].join("\n"),
+    );
+    const report = await validateTour({ guidePath, ref: null, deps: null });
+    expect(report.errors).toEqual([]);
+  });
+
+  test("broken mermaid in summary is reported with location", async () => {
+    const guidePath = await guideWith(
+      [
+        `version: 1`,
+        `summary: |`,
+        `  \`\`\`mermaid`,
+        `  flowhart LR`,
+        `    A --> B`,
+        `  \`\`\``,
+        `files:`,
+        `  - path: src/a.ts`,
+        `    note: hi`,
+        ``,
+      ].join("\n"),
+    );
+    const report = await validateTour({ guidePath, ref: null, deps: null });
+    expect(
+      report.errors.some(
+        (e) => e.startsWith("mermaid in summary:") && e.length > "mermaid in summary:".length,
+      ),
+    ).toBe(true);
+  });
+
+  test("broken mermaid in a file note points at the file path", async () => {
+    const guidePath = await guideWith(
+      [
+        `version: 1`,
+        `files:`,
+        `  - path: src/a.ts`,
+        `    note: |`,
+        `      \`\`\`mermaid`,
+        `      flowhart LR`,
+        `        A --> B`,
+        `      \`\`\``,
+        ``,
+      ].join("\n"),
+    );
+    const report = await validateTour({ guidePath, ref: null, deps: null });
+    expect(
+      report.errors.some(
+        (e) => e.includes(`mermaid in note for "src/a.ts"`),
+      ),
+    ).toBe(true);
+  });
+
+  test("broken mermaid in an annotation thread points at the annotation", async () => {
+    const guidePath = await guideWith(
+      [
+        `version: 1`,
+        `files:`,
+        `  - path: src/a.ts`,
+        `    annotations:`,
+        `      - anchor: "Resolve"`,
+        `        thread:`,
+        `          - "first ok"`,
+        `          - |`,
+        `            second:`,
+        ``,
+        `            \`\`\`mermaid`,
+        `            flowhart LR`,
+        `              A --> B`,
+        `            \`\`\``,
+        ``,
+      ].join("\n"),
+    );
+    const report = await validateTour({ guidePath, ref: null, deps: null });
+    expect(
+      report.errors.some(
+        (e) =>
+          e.includes(`mermaid in annotation (anchor "Resolve")`) &&
+          e.includes(`comment[1]`) &&
+          e.includes(`"src/a.ts"`),
+      ),
+    ).toBe(true);
+  });
+
+  test("multiple mermaid blocks in one field are numbered", async () => {
+    const guidePath = await guideWith(
+      [
+        `version: 1`,
+        `summary: |`,
+        `  \`\`\`mermaid`,
+        `  flowchart LR`,
+        `    A --> B`,
+        `  \`\`\``,
+        ``,
+        `  \`\`\`mermaid`,
+        `  flowhart LR`,
+        `    A --> B`,
+        `  \`\`\``,
+        `files: []`,
+        ``,
+      ].join("\n"),
+    );
+    const report = await validateTour({ guidePath, ref: null, deps: null });
+    expect(report.errors).toHaveLength(1);
+    expect(report.errors[0]!).toContain("summary (block #2)");
+  });
 });
 
 describe("validateTour — against a PR", () => {

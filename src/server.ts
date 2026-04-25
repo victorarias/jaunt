@@ -54,6 +54,17 @@ export async function startServer(
       host: opts.host ? true : undefined,
       allowedHosts: opts.host ? true : undefined,
     },
+    // Mermaid is lazy-imported (see web/src/components/MermaidBlock.tsx) so
+    // tours without diagrams don't pay for it. But Vite's *lazy* discovery
+    // mode (the default) only kicks in on the first browser request — and
+    // mermaid's tree (dagre + d3 + dayjs + …) takes long enough that the
+    // first page request hangs while Vite optimizes. Listing it under
+    // `include` forces eager pre-bundling at server boot: the cost happens
+    // once, before listen, with Vite's normal progress logging, and is
+    // cached in node_modules/.vite for subsequent runs.
+    optimizeDeps: {
+      include: ["mermaid"],
+    },
     clearScreen: false,
   });
 

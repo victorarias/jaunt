@@ -1,4 +1,5 @@
 import type { Annotation, Comment } from "../types.ts";
+import { Markdown } from "./Markdown.tsx";
 
 type Props = {
   annotation: Annotation;
@@ -67,7 +68,7 @@ function CommentBubble({
           <span className="comment-author">{comment.author}</span>
         </div>
       )}
-      <div className="comment-body">{comment.body}</div>
+      <Markdown source={comment.body} className="comment-body" />
     </div>
   );
 }

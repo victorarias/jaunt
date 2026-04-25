@@ -1,4 +1,5 @@
 import type { PRMeta, PRFile, TourMeta } from "../types.ts";
+import { Markdown } from "./Markdown.tsx";
 
 type Props = {
   meta: PRMeta;
@@ -20,18 +21,20 @@ export function SummaryCard({ meta, files, tour }: Props) {
         {tour?.summary && (
           <>
             <h3>Tour summary</h3>
-            <p className="prose">{tour.summary}</p>
+            <Markdown source={tour.summary} className="prose" />
           </>
         )}
 
         <h3>PR description</h3>
-        <p className="prose">
-          {meta.body.trim() || (
+        {meta.body.trim() ? (
+          <Markdown source={meta.body} className="prose" />
+        ) : (
+          <p className="prose">
             <span style={{ color: "var(--fg-dimmer)" }}>
               No description provided.
             </span>
-          )}
-        </p>
+          </p>
+        )}
 
         {tour && tour.warnings.length > 0 && (
           <>
