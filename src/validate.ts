@@ -70,6 +70,9 @@ export async function validateTour(opts: {
     seen.add(f.path);
   }
 
+  // Mermaid syntax in agent-authored prose. Doesn't need the PR.
+  await validateMermaidBlocks(tour, report);
+
   if (!opts.ref || !opts.deps) {
     // Offline: schema + guide-internal checks are all we can do.
     return report;
@@ -223,4 +226,114 @@ export async function resolveGuidePath(
   cwd: string,
 ): Promise<string | null> {
   return resolveTourPath(explicit, cwd);
+}
+
+/**
+ * Find ```mermaid ... ``` fenced code blocks in a string. Returns the inner
+ * source for each block. Tolerant of CommonMark indentation: a fence indented
+ * by N spaces means N spaces are stripped from every body line. Unclosed
+ * fences are skipped silently — markdown is forgiving and the renderer will
+ * surface that case anyway.
+ */
+function extractMermaidBlocks(text: string): string[] {
+  const out: string[] = [];
+  const lines = text.split("\n");
+  let i = 0;
+  while (i < lines.length) {
+    const open = lines[i]!.match(/^(\s*)```mermaid\s*$/);
+    if (!open) {
+      i++;
+      continue;
+    }
+    const indent = open[1]!.length;
+    const start = i + 1;
+    let j = start;
+    while (j < lines.length && !/^\s*```\s*$/.test(lines[j]!)) j++;
+    if (j === lines.length) break; // unclosed — skip
+    const body = lines
+      .slice(start, j)
+      .map((l) => (l.startsWith(" ".repeat(indent)) ? l.slice(indent) : l))
+      .join("\n");
+    out.push(body);
+    i = j + 1;
+  }
+  return out;
+}
+
+let browserGlobalsReady = false;
+async function ensureBrowserGlobals(): Promise<void> {
+  if (browserGlobalsReady) return;
+  const { JSDOM } = await import("jsdom");
+  const dom = new JSDOM("<!doctype html><html><body></body></html>");
+  const g = globalThis as Record<string, unknown>;
+  if (!g.window) g.window = dom.window;
+  if (!g.document) g.document = dom.window.document;
+  if (!g.DocumentFragment) g.DocumentFragment = dom.window.DocumentFragment;
+  if (!g.Element) g.Element = dom.window.Element;
+  if (!g.HTMLElement) g.HTMLElement = dom.window.HTMLElement;
+  if (!g.Node) g.Node = dom.window.Node;
+  browserGlobalsReady = true;
+}
+
+async function validateMermaidBlocks(
+  tour: Tour,
+  report: ValidateReport,
+): Promise<void> {
+  type Item = { source: string; label: string };
+  const items: Item[] = [];
+
+  const labelBlocks = (text: string, baseLabel: string) => {
+    const blocks = extractMermaidBlocks(text);
+    blocks.forEach((source, idx) => {
+      const suffix = blocks.length > 1 ? ` (block #${idx + 1})` : "";
+      items.push({ source, label: `${baseLabel}${suffix}` });
+    });
+  };
+
+  if (tour.summary) labelBlocks(tour.summary, "summary");
+  for (const f of tour.files) {
+    if (f.note) labelBlocks(f.note, `note for "${f.path}"`);
+    f.annotations.forEach((a) => {
+      const where =
+        a.kind === "anchor"
+          ? `anchor "${a.anchor}"`
+          : a.kind === "line"
+            ? `line ${a.line}`
+            : `lines ${a.start}-${a.end}`;
+      a.comments.forEach((c, ci) => {
+        const annLabel =
+          a.comments.length > 1
+            ? `annotation (${where}) comment[${ci}] on "${f.path}"`
+            : `annotation (${where}) on "${f.path}"`;
+        labelBlocks(c.body, annLabel);
+      });
+    });
+  }
+
+  if (items.length === 0) return;
+
+  let mermaid: typeof import("mermaid").default;
+  try {
+    // Mermaid's parse path pulls DOMPurify, which needs a browser-shaped
+    // global. Install a jsdom window once, before importing mermaid.
+    await ensureBrowserGlobals();
+    mermaid = (await import("mermaid")).default;
+  } catch (err) {
+    report.warnings.push(
+      `mermaid: could not load parser (${err instanceof Error ? err.message : String(err)}) — skipping diagram syntax checks`,
+    );
+    return;
+  }
+
+  for (const item of items) {
+    try {
+      await mermaid.parse(item.source);
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      // Mermaid's messages can run long with stack-y context; keep the first
+      // line — that's the actionable part for the agent.
+      const msg = raw.split("\n")[0]!.trim();
+      report.errors.push(`mermaid in ${item.label}: ${msg}`);
+    }
+  }
 }

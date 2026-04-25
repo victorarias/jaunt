@@ -3,6 +3,7 @@ import type { Draft, PRFile } from "../types.ts";
 import { fileStateOf } from "../hooks/useDraft.ts";
 import { DiffView } from "./DiffView.tsx";
 import { ContentView } from "./ContentView.tsx";
+import { Markdown } from "./Markdown.tsx";
 import type { Highlighter } from "../hooks/useHighlighter.ts";
 
 type Props = {
@@ -104,7 +105,7 @@ function FileCardImpl({
             <span className="dot" />
             <span>tour · what to look for</span>
           </div>
-          <div className="lead">{file.tourNote}</div>
+          <Markdown source={file.tourNote} className="lead" />
         </div>
       )}
 

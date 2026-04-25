@@ -86,6 +86,52 @@ Rule of thumb:
 
 Both `>` and `|` treat a blank line as a paragraph break — so `>` still supports multi-paragraph notes, you just use `\n\n` to separate paragraphs.
 
+### Markdown is rendered
+
+`summary:`, file `note:`, and thread items render as **GitHub-flavored markdown**. Use it where it earns its keep, not as decoration:
+
+- **Lists** — when the note really is a list of points (the rare case where listing beats teaching). One-per-line bullets read better than comma-separated prose.
+- **Inline `code`** — for symbol names (`Resolve`, `INV-5`, `--no-guide`). Always backtick them.
+- **Fenced code blocks** — for short snippets. Use sparingly; the file's diff is right there.
+- **Links** — `[plan](docs/plans/2026-04-18-foo.md)` for cross-references. Links open in a new tab.
+- **Tables** — for actual matrices (decision tables, before/after columns). Don't fake-table prose.
+- **Bold** sparingly — for the *one* word in a paragraph the reader must not miss.
+
+Headings inside notes are usually wrong — the file card already has structure. Reach for a heading only inside a long `summary:` that earns sections.
+
+### Mermaid diagrams
+
+Fenced `mermaid` blocks render as SVG. Reach for a diagram when a one-glance map beats prose — most often inside the **tour summary**, not per-file notes:
+
+````yaml
+summary: |
+  This PR splits the resolver into a domain core and a Postgres adapter.
+  The diagram shows the new shape.
+
+  ```mermaid
+  flowchart LR
+    HTTP --> Service
+    Service --> Resolver[Resolver core]
+    Resolver --> PortAdapter[Postgres adapter]
+    PortAdapter --> DB[(Postgres)]
+  ```
+
+  Read the resolver first (#02), then the adapter (#04).
+````
+
+Note the outer `|` (literal) — the diagram's linebreaks are meaningful. Folded `>` would collapse them and Mermaid would refuse to render.
+
+When to use a diagram:
+- **Architecture or data flow** — boxes-and-arrows of how the new pieces connect.
+- **State machines** — `stateDiagram-v2` for an enum-driven aggregate.
+- **Sequence flows** — `sequenceDiagram` when timing or ordering across services is the point.
+
+When *not* to use one:
+- **One file, linear change** — the diagram adds nothing the reading order doesn't.
+- **As decoration** — if prose says it just as well, use prose. A diagram earns its keep when removing it makes the PR materially harder to follow.
+
+`jaunt validate` parses every fenced `mermaid` block in `summary`, file `note`s, and thread items, and reports syntax errors with the field they came from. Run validate before handing the tour back to the user — broken diagrams should not reach the reviewer's screen. If a block does slip through, the UI shows the error inline as a fallback.
+
 ## Voice
 
 The tour is **pedagogic** — it walks a reviewer through *your* mental model so they arrive where you already are. Assume they're smart but haven't seen this PR before; don't assume they know the codebase's conventions, the plan doc, or the constraints that shaped the design.
