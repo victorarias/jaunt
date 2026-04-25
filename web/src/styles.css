@@ -877,6 +877,29 @@ a:hover {
   overflow: hidden;
   font-family: var(--sans);
 }
+@keyframes target-flash {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+  25% {
+    box-shadow: 0 0 28px 6px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+}
+.thread.flash,
+.file-card.flash,
+.summary-card.flash {
+  animation: target-flash 1.1s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .thread.flash,
+  .file-card.flash,
+  .summary-card.flash {
+    animation: none;
+  }
+}
 .thread-head {
   display: flex;
   align-items: center;

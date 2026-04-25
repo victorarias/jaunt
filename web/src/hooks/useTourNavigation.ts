@@ -15,6 +15,7 @@ export type TourNavigation = {
   totalStops: number;
   currentFile: PRFile | null;
   hasAnyAnnotations: boolean;
+  canNext: boolean;
   canPrevAnn: boolean;
   canNextAnn: boolean;
   jumpTo: (stop: number) => void;
@@ -46,7 +47,7 @@ export function useTourNavigation(opts: {
   files: PRFile[];
   draft: Draft | null;
   toggleReviewed: (path: string) => void;
-  scrollToId: (id: string) => void;
+  scrollToId: (id: string, align?: "top" | "center") => void;
 }): TourNavigation {
   const { ref, files, draft, toggleReviewed, scrollToId } = opts;
   const totalStops = files.length + 1;
@@ -120,17 +121,42 @@ export function useTourNavigation(opts: {
     }
   }, [currentStop, files, draft, toggleReviewed]);
 
-  const next = useCallback(() => {
-    if (currentStop < totalStops - 1) {
-      const leaving = currentStop > 0 ? files[currentStop - 1] : null;
-      markCurrentReviewedOnLeave();
-      if (leaving) setCollapsed(leaving.path, true);
-      jumpTo(currentStop + 1);
+  // Find the next unreviewed file, scanning forward from the current stop and
+  // wrapping past the end. Skips the current file so J always *moves*. Returns
+  // a stop index (1..files.length) or null when nothing to do.
+  const findNextUnreviewedStop = useCallback((): number | null => {
+    if (!draft || files.length === 0) return null;
+    const isReviewed = (i: number) => {
+      const f = files[i];
+      return f ? fileStateOf(draft, f.path).reviewed : true;
+    };
+    for (let i = currentStop; i < files.length; i++) {
+      if (!isReviewed(i)) return i + 1;
     }
+    for (let i = 0; i + 1 < currentStop; i++) {
+      if (!isReviewed(i)) return i + 1;
+    }
+    return null;
+  }, [draft, files, currentStop]);
+
+  const canNext = useMemo(
+    () => findNextUnreviewedStop() !== null,
+    [findNextUnreviewedStop],
+  );
+
+  const next = useCallback(() => {
+    const target = findNextUnreviewedStop();
+    if (target === null) return;
+    const leaving = currentStop > 0 ? files[currentStop - 1] : null;
+    markCurrentReviewedOnLeave();
+    if (leaving) setCollapsed(leaving.path, true);
+    const dest = files[target - 1];
+    if (dest) setCollapsed(dest.path, false);
+    jumpTo(target);
   }, [
     currentStop,
     files,
-    totalStops,
+    findNextUnreviewedStop,
     markCurrentReviewedOnLeave,
     setCollapsed,
     jumpTo,
@@ -144,6 +170,24 @@ export function useTourNavigation(opts: {
     currentStop > 0 ? (files[currentStop - 1] ?? null) : null;
 
   const currentAnnotations = currentFile?.annotations ?? [];
+
+  // Annotation array order is whatever the tour-builder emitted, but the diff
+  // renders each annotation under its lineStart, so visual order = line order.
+  // n/p must walk that visual order, otherwise reviewers see annotations
+  // skipped over and revisited.
+  const annOrder = useMemo(() => {
+    return currentAnnotations
+      .map((a, i) => ({ i, lineStart: a.lineStart, lineEnd: a.lineEnd }))
+      .sort(
+        (a, b) =>
+          a.lineStart - b.lineStart ||
+          a.lineEnd - b.lineEnd ||
+          a.i - b.i,
+      )
+      .map((x) => x.i);
+  }, [currentAnnotations]);
+
+  const annPos = annCursor === -1 ? -1 : annOrder.indexOf(annCursor);
 
   const toggleCurrentReviewed = useCallback(() => {
     if (currentFile) toggleReviewed(currentFile.path);
@@ -159,26 +203,28 @@ export function useTourNavigation(opts: {
 
   const gotoAnnotation = useCallback(
     (delta: 1 | -1) => {
-      if (!currentFile || currentAnnotations.length === 0) return;
-      const last = currentAnnotations.length - 1;
-      let target: number;
-      if (annCursor === -1) {
-        target = delta === 1 ? 0 : last;
+      if (!currentFile || annOrder.length === 0) return;
+      const last = annOrder.length - 1;
+      let nextPos: number;
+      if (annPos === -1) {
+        nextPos = delta === 1 ? 0 : last;
       } else {
-        target = annCursor + delta;
+        nextPos = annPos + delta;
       }
-      if (target < 0 || target > last) return;
+      if (nextPos < 0 || nextPos > last) return;
+      const target = annOrder[nextPos];
+      if (target === undefined) return;
       // Expand the file so the annotation is actually visible — otherwise
       // we'd scroll to an id rendered inside a hidden block.
       setCollapsed(currentFile.path, false);
       setAnnCursor(target);
       const fileIndex = currentStop - 1;
-      scrollToId(`ann-${fileIndex}-${target}`);
+      scrollToId(`ann-${fileIndex}-${target}`, "center");
     },
     [
       currentFile,
-      currentAnnotations.length,
-      annCursor,
+      annOrder,
+      annPos,
       currentStop,
       scrollToId,
       setCollapsed,
@@ -190,17 +236,16 @@ export function useTourNavigation(opts: {
     [files],
   );
 
-  const canPrevAnn =
-    currentAnnotations.length > 0 && annCursor > 0;
+  const canPrevAnn = annOrder.length > 0 && annPos > 0;
   const canNextAnn =
-    currentAnnotations.length > 0 &&
-    annCursor < currentAnnotations.length - 1;
+    annOrder.length > 0 && annPos < annOrder.length - 1;
 
   return {
     currentStop,
     totalStops,
     currentFile,
     hasAnyAnnotations,
+    canNext,
     canPrevAnn,
     canNextAnn,
     jumpTo,
