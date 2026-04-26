@@ -101,7 +101,7 @@ Headings inside notes are usually wrong — the file card already has structure.
 
 ### Mermaid diagrams
 
-Fenced `mermaid` blocks render as SVG. Reach for a diagram when a one-glance map beats prose — most often inside the **tour summary**, not per-file notes:
+Fenced `mermaid` blocks render as SVG. A boxes-and-arrows diagram is one of the highest-leverage tools the tour has: the reader absorbs the *shape* of the change — what's new, how it connects, where the seams are — in two seconds, before reading a single note. Several paragraphs of architectural prose collapse into a glance, which is exactly the catch-up-gap problem the tour exists to solve. **Default to including a diagram in the tour summary** for any PR that introduces or rearranges connections between components — most non-trivial PRs do. Per-file diagrams are rarer but worth it when a single file introduces a non-trivial sub-shape (a multi-state aggregate, a router with several branches, a pipeline with a handful of stages).
 
 ````yaml
 summary: |
@@ -121,27 +121,31 @@ summary: |
 
 Note the outer `|` (literal) — the diagram's linebreaks are meaningful. Folded `>` would collapse them and Mermaid would refuse to render.
 
-When to use a diagram:
-- **Architecture or data flow** — boxes-and-arrows of how the new pieces connect.
-- **State machines** — `stateDiagram-v2` for an enum-driven aggregate.
-- **Sequence flows** — `sequenceDiagram` when timing or ordering across services is the point.
+Pick the type that matches the change:
+- **`flowchart LR/TD`** — architecture or data flow. The default; reach for it whenever the PR touches how components connect.
+- **`stateDiagram-v2`** — for an enum-driven aggregate or a state machine the PR introduces.
+- **`sequenceDiagram`** — when timing or ordering across services is the *point* of the change (e.g. a new handshake, a retry/back-pressure flow).
+- **`classDiagram`** — when a new type hierarchy or interface lattice is the headline.
 
-When *not* to use one:
-- **One file, linear change** — the diagram adds nothing the reading order doesn't.
-- **As decoration** — if prose says it just as well, use prose. A diagram earns its keep when removing it makes the PR materially harder to follow.
+Skip the diagram only when:
+- **The change is small and linear** — one file, one concept, no new connections. Prose does it.
+- **The diagram would just relabel the file list** — if the boxes are exactly the files in the tour with no extra structure or grouping, the reading order itself already says it; a diagram on top is decoration.
 
 `jaunt validate` parses every fenced `mermaid` block in `summary`, file `note`s, and thread items, and reports syntax errors with the field they came from. Run validate before handing the tour back to the user — broken diagrams should not reach the reviewer's screen. If a block does slip through, the UI shows the error inline as a fallback.
 
 ## Voice
 
-The tour is **pedagogic** — it walks a reviewer through *your* mental model so they arrive where you already are. Assume they're smart but haven't seen this PR before; don't assume they know the codebase's conventions, the plan doc, or the constraints that shaped the design.
+The tour is **pedagogic** — it walks a reviewer through *your* mental model so they arrive where you already are. Picture the reader: smart and motivated, but landing cold. They haven't read the plan. They don't know which design choices were contested. They haven't memorized the codebase's conventions. They're willing to spend twenty minutes, not three hours, and they want to leave with the same mental model you have without doing the archaeology you did to build it.
 
-Four rules of thumb, in order:
+That's why the tour exists — to *collapse the catch-up gap*. The bar isn't "did I describe the changes accurately"; it's "did I leave the reader with the right mental model." A note that's technically correct but assumes context the reader doesn't have has failed them. When the principles below tug at each other (e.g. "be concise" vs "explain enough to land"), resolve in favor of the reader who has no prior context.
+
+Five rules of thumb, in order:
 
 1. **Teach, don't list.** Notes should build understanding, not enumerate changes. "Enums first — the rest of the system keys off these states" teaches. "Adds Status and Priority enums" lists. The diff lists already. Line-pinned annotations have a sharper version of this rule — see step 5b.
-2. **Be concise.** Pedagogic is not the same as thorough. A note that takes 5 lines to say what 2 would is worse than the 2-line version, not better. Short sentences. No filler ("basically", "essentially", "it's worth noting that"). If you can delete a sentence without losing meaning, delete it.
+2. **Be concise — not by compressing meaning.** A note that takes 5 lines to say what 2 would is padded; cut it. But concise isn't the same as terse — if a file genuinely needs four sentences to bridge the reader from *"I see what changed"* to *"I see why it had to be this way"*, write four sentences. The yardstick is the reader, not a word count: deleting a sentence that loses them is a failure; deleting one that doesn't is a win. Filler ("basically", "essentially", "it's worth noting that") always goes.
 3. **Assume a smart reader.** No hand-holding on standard patterns (what a repository adapter does, what an HTTP handler looks like). Explain what's *non-obvious* — the invariant, the tradeoff, the constraint you bowed to — and trust the reviewer on the rest.
-4. **Sound like a friendly engineer, not a textbook.** You're writing for a teammate, not an audience — think senior engineer who actively wants the reviewer to *get it*, not one showing off how tight the code is. Loose register. Contractions. First person where it helps (*"I almost went the other way here"*, *"you'll probably wonder about the retry loop — it got messy, had to be"*). Little asides when a decision is weird or annoying are good; so is meeting the reader where they are (*"if you've read the plan, this'll be familiar"*). What to avoid: stiff openers (*"This module provides..."*, *"The purpose of this file is..."*), smugness, and cold one-line pronouncements that shut the reader down. A good note reads like how you'd walk a teammate through the PR on a good day — confident, casual, generous with context.
+4. **Carry the concept; let tags trail.** Plan-doc references (`INV-5`, `DT-2`, `R-1..R-5`, `EX-4`, etc.) are pointers to where the full statement lives, not stand-ins for the concept. Lead with the idea, then add the tag as a footnote the reader can chase for the full rule: *"First-writer-wins is enforced here (INV-5)"*, *"Model resolution rules (DT-1) — see the godoc"*, *"Builds the per-user model picker from the catalog (INV-8) — loops `UserSelectable()` and gates each entry on credentials"*. The reader holds the *concept* in their head, not the codename, so a tagged-concept reads as a complete thought even for a reviewer who hasn't memorized the plan. This applies most sharply in *consumer files* (the code that implements the rule) — in the plan doc itself, citing tags directly is fine since the reader's looking at them.
+5. **Sound like a friendly engineer, not a textbook.** You're writing for a teammate, not an audience — think senior engineer who actively wants the reviewer to *get it*, not one showing off how tight the code is. Loose register. Contractions. First person where it helps (*"I almost went the other way here"*, *"you'll probably wonder about the retry loop — it got messy, had to be"*). Little asides when a decision is weird or annoying are good; so is meeting the reader where they are (*"if you've read the plan, this'll be familiar"*). What to avoid: stiff openers (*"This module provides..."*, *"The purpose of this file is..."*), smugness, and cold one-line pronouncements that shut the reader down. A good note reads like how you'd walk a teammate through the PR on a good day — confident, casual, generous with context.
 
 A good tour feels like a sharp colleague walking you through the codebase at a whiteboard. A bad tour feels like a compliance checklist.
 
@@ -216,7 +220,7 @@ Good notes reference:
 - **Why this file now** (gives context the diff lacks)
 - **Cross-references** ("start here, then follow outward")
 
-**Length**: 1–3 lines is the sweet spot. Up to 5 for a file the PR hinges on (the service, the plan). A one-line note is fine for a thin file — don't pad. If you find yourself writing a paragraph, you're probably restating the diff.
+**Length** scales with how much lift the file demands of the reader. A thin or mechanical file — one line, don't pad. A file with a moderate idea — 2–3 lines. The file the PR hinges on (the service, the aggregate, the plan) — 4–8 lines is fine if the conceptual lift genuinely warrants it; if you're writing more, ask whether the load belongs in the tour summary instead. The yardstick is the reader's mental model, not a target count. A paragraph that *restates the diff* is padding — cut it. A paragraph that *teaches the why* — the constraint, the rejected alternative, the downstream consequence the diff can't show — is exactly what the tour is for.
 
 Aim for notes that teach — reference the invariant, the tradeoff, the constraint the reader can't see in the diff. If a note could be replaced by reading the diff itself, it's not pulling its weight.
 
@@ -290,6 +294,7 @@ Three to five lines. Tell the reviewer:
 - **What this PR is** in one phrase ("PR 2 of 3 for background tool calls")
 - **The reading strategy** in shorthand ("Read domain-outward: plan → aggregate → ports → service → persistence → realtime → synthesis → wiring → tests.")
 - Anything that would surprise them ("Generated files are at the bottom under Skipped.")
+- **A diagram, by default**, if the PR touches connections between components — a 6-box flowchart at the top of the summary collapses minutes of catch-up reading into a glance. See *Mermaid diagrams* above for shapes and the (narrow) cases where a diagram doesn't earn its keep.
 
 ### 7. Write the file
 
