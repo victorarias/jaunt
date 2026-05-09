@@ -364,7 +364,7 @@ describe("ui e2e — real browser round-trip", () => {
           undefined,
           { timeout: 5_000 },
         );
-        expect(await textOf(channel)).toContain("waiting for reply");
+        expect(await textOf(channel)).toContain("agent is replying");
         expect(await noteA.inputValue()).toBe("Keep this draft note.");
         await waitForSubmitCount(fx, 1);
         expect(fx.submits).toHaveLength(1);
@@ -425,7 +425,7 @@ describe("ui e2e — real browser round-trip", () => {
         expect(await fx.page.locator(".modal").count()).toBe(0);
         const channel = fx.page.locator(".agent-channel");
         await channel.waitFor({ state: "visible", timeout: 5_000 });
-        expect(await textOf(channel)).toContain("waiting for reply");
+        expect(await textOf(channel)).toContain("agent is replying");
         await waitForSubmitCount(fx, 1);
         expect(fx.submits).toHaveLength(1);
         expect(fx.submits[0]!.ok).toBe(true);
