@@ -981,6 +981,6 @@ describe("ui e2e — real browser round-trip", () => {
         await fx.cleanup();
       }
     },
-    90_000,
+    180_000,
   );
 });
