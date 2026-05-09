@@ -20,8 +20,10 @@ type Props = {
   highlighter: Highlighter | null;
   replies: Record<string, string>;
   onSetReply: (annotationIdx: number, text: string) => void;
+  onAskAgentAnnotation: (annotationIdx: number, text: string) => Promise<void>;
   lineComments: Record<string, string>;
   onSetLineComment: (line: number, text: string) => void;
+  onAskAgentLine: (line: number, code: string, text: string) => Promise<void>;
 };
 
 type IndexedAnnotation = { index: number; annotation: Annotation };
@@ -68,8 +70,10 @@ export function DiffView({
   highlighter,
   replies,
   onSetReply,
+  onAskAgentAnnotation,
   lineComments,
   onSetLineComment,
+  onAskAgentLine,
 }: Props) {
   const lang = resolveLang(file.language);
   const { byDiffKey, outsideDiff } = useMemo(
@@ -156,6 +160,7 @@ export function DiffView({
               index={index}
               reply={replies[String(index)] ?? ""}
               onReplyChange={onSetReply}
+              onAskAgent={onAskAgentAnnotation}
             />
           ))}
         </div>
@@ -172,11 +177,13 @@ export function DiffView({
             byDiffKey={byDiffKey}
             replies={replies}
             onSetReply={onSetReply}
+            onAskAgentAnnotation={onAskAgentAnnotation}
             openLines={openLines}
             onOpenLine={openLine}
             onCloseLine={closeLine}
             lineComments={lineComments}
             onSetLineComment={onSetLineComment}
+            onAskAgentLine={onAskAgentLine}
           />
         ) : (
           <OutsideBlockView
@@ -187,11 +194,13 @@ export function DiffView({
             highlighter={highlighter}
             replies={replies}
             onSetReply={onSetReply}
+            onAskAgentAnnotation={onAskAgentAnnotation}
             openLines={openLines}
             onOpenLine={openLine}
             onCloseLine={closeLine}
             lineComments={lineComments}
             onSetLineComment={onSetLineComment}
+            onAskAgentLine={onAskAgentLine}
           />
         ),
       )}
@@ -208,11 +217,13 @@ function HunkView({
   byDiffKey,
   replies,
   onSetReply,
+  onAskAgentAnnotation,
   openLines,
   onOpenLine,
   onCloseLine,
   lineComments,
   onSetLineComment,
+  onAskAgentLine,
 }: {
   hunkIndex: number;
   hunk: DiffHunk;
@@ -222,11 +233,13 @@ function HunkView({
   byDiffKey: Map<string, IndexedAnnotation[]>;
   replies: Record<string, string>;
   onSetReply: (annotationIdx: number, text: string) => void;
+  onAskAgentAnnotation: (annotationIdx: number, text: string) => Promise<void>;
   openLines: Set<number>;
   onOpenLine: (line: number) => void;
   onCloseLine: (line: number) => void;
   lineComments: Record<string, string>;
   onSetLineComment: (line: number, text: string) => void;
+  onAskAgentLine: (line: number, code: string, text: string) => Promise<void>;
 }) {
   return (
     <>
@@ -262,6 +275,7 @@ function HunkView({
                 index={index}
                 reply={replies[String(index)] ?? ""}
                 onReplyChange={onSetReply}
+                onAskAgent={onAskAgentAnnotation}
               />
             ))}
             {formOpen && n !== null && (
@@ -270,6 +284,7 @@ function HunkView({
                 text={lineComments[String(n)] ?? ""}
                 onChange={(t) => onSetLineComment(n, t)}
                 onClose={() => onCloseLine(n)}
+                onAskAgent={(t) => onAskAgentLine(n, line.content, t)}
                 autoFocus={openLines.has(n) && !hasComment}
               />
             )}
@@ -287,11 +302,13 @@ function OutsideBlockView({
   highlighter,
   replies,
   onSetReply,
+  onAskAgentAnnotation,
   openLines,
   onOpenLine,
   onCloseLine,
   lineComments,
   onSetLineComment,
+  onAskAgentLine,
 }: {
   block: OutsideBlock;
   fileIndex: number;
@@ -299,11 +316,13 @@ function OutsideBlockView({
   highlighter: Highlighter | null;
   replies: Record<string, string>;
   onSetReply: (annotationIdx: number, text: string) => void;
+  onAskAgentAnnotation: (annotationIdx: number, text: string) => Promise<void>;
   openLines: Set<number>;
   onOpenLine: (line: number) => void;
   onCloseLine: (line: number) => void;
   lineComments: Record<string, string>;
   onSetLineComment: (line: number, text: string) => void;
+  onAskAgentLine: (line: number, code: string, text: string) => Promise<void>;
 }) {
   const annotationsByLine = useMemo(() => {
     const m = new Map<number, IndexedAnnotation[]>();
@@ -351,6 +370,7 @@ function OutsideBlockView({
                 index={index}
                 reply={replies[String(index)] ?? ""}
                 onReplyChange={onSetReply}
+                onAskAgent={onAskAgentAnnotation}
               />
             ))}
             {formOpen && (
@@ -359,6 +379,7 @@ function OutsideBlockView({
                 text={lineComments[String(n)] ?? ""}
                 onChange={(t) => onSetLineComment(n, t)}
                 onClose={() => onCloseLine(n)}
+                onAskAgent={(t) => onAskAgentLine(n, line.content, t)}
                 autoFocus={openLines.has(n) && !hasComment}
               />
             )}

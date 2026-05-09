@@ -333,6 +333,62 @@ a:hover {
   padding: 24px 28px 48px;
 }
 
+/* Agent replies (local back-channel) */
+.agent-replies {
+  margin: 0 0 16px;
+  border: 1px solid color-mix(in srgb, var(--accent-2) 38%, var(--border));
+  border-radius: 8px;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent-2) 10%, transparent),
+      color-mix(in srgb, var(--warn) 6%, transparent)
+    ),
+    var(--bg-1);
+  overflow: hidden;
+}
+.agent-replies-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-2) 24%, var(--border));
+  background: color-mix(in srgb, var(--bg-2) 82%, transparent);
+}
+.agent-replies .eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-dimmer);
+}
+.agent-replies h2 {
+  margin: 0;
+  color: var(--fg-bright);
+  font-size: 13px;
+  font-weight: 650;
+}
+.agent-replies time {
+  color: var(--fg-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.agent-replies > .md,
+.agent-replies > p {
+  margin: 0;
+  padding: 14px 16px 16px;
+  font-family: var(--sans);
+  font-size: 13px;
+}
+.agent-replies.waiting {
+  border-color: color-mix(in srgb, var(--warn) 42%, var(--border));
+}
+.agent-replies.waiting h2 {
+  color: var(--warn);
+}
+
 /* Summary card (stop 0) */
 .summary-card {
   border: 1px solid var(--border);
@@ -1024,6 +1080,27 @@ a:hover {
   text-transform: uppercase;
   color: var(--warn);
 }
+.thread-reply-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.thread-reply-actions .spacer {
+  flex: 1;
+}
+.thread-reply-actions .ask-inline {
+  color: var(--accent-2);
+  border-color: color-mix(in srgb, var(--accent-2) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent-2) 8%, var(--bg-2));
+}
+.thread-reply-actions .ask-inline:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-2) 16%, var(--bg-2));
+}
+.thread-reply-actions .reply-error {
+  color: var(--risk);
+  font-family: var(--sans);
+  font-size: 11px;
+}
 
 /* Annotations-outside-the-diff notice */
 .outside-notice {
@@ -1203,6 +1280,121 @@ a:hover {
   background: color-mix(in srgb, var(--accent) 12%, var(--bg-1));
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
   color: var(--accent);
+}
+
+.drive .ask-agent {
+  background: color-mix(in srgb, var(--accent-2) 12%, var(--bg-3));
+  border: 1px solid color-mix(in srgb, var(--accent-2) 45%, var(--border));
+  color: var(--accent-2);
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.drive .ask-agent:hover {
+  background: color-mix(in srgb, var(--accent-2) 20%, var(--bg-3));
+  border-color: color-mix(in srgb, var(--accent-2) 70%, var(--border));
+}
+
+/* Quick agent channel */
+.agent-channel {
+  position: fixed;
+  right: 18px;
+  bottom: 68px;
+  width: min(520px, calc(100vw - 36px));
+  max-height: min(620px, calc(100vh - 104px));
+  z-index: 80;
+  border: 1px solid color-mix(in srgb, var(--accent-2) 45%, var(--border));
+  border-radius: 8px;
+  background: var(--bg-1);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.agent-channel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent-2) 10%, var(--bg-2));
+}
+.agent-channel .eyebrow {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-dimmer);
+}
+.agent-channel-head b {
+  color: var(--fg-bright);
+  font-size: 12px;
+}
+.agent-channel-head .close {
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+.agent-channel-replies {
+  max-height: 260px;
+  overflow: auto;
+  padding: 12px 14px 2px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--sans);
+}
+.agent-channel-compose {
+  padding: 12px;
+}
+.agent-channel-context {
+  margin-bottom: 8px;
+  color: var(--fg-dim);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-channel textarea {
+  width: 100%;
+  min-height: 86px;
+  resize: vertical;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--fg);
+  padding: 10px;
+  font-family: var(--sans);
+  line-height: 1.5;
+}
+.agent-channel textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent-2) 70%, var(--border));
+  background: var(--bg);
+}
+.agent-channel-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.agent-channel-actions > span {
+  color: var(--warn);
+  font-size: 11px;
+}
+.agent-channel-error {
+  margin-top: 8px;
+  color: var(--risk);
+  font-family: var(--sans);
+  font-size: 12px;
 }
 
 /* ── Modal ──────────────────────────────────────────────── */

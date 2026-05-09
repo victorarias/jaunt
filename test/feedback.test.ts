@@ -2,7 +2,14 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { feedbackPath, writeFeedback } from "../src/feedback.ts";
+import {
+  agentRepliesPath,
+  clearAgentReplies,
+  feedbackPath,
+  readAgentReplies,
+  writeAgentReply,
+  writeFeedback,
+} from "../src/feedback.ts";
 import { sampleRef } from "./fixtures.ts";
 
 const tempDirs: string[] = [];
@@ -17,6 +24,48 @@ afterEach(async () => {
   while (tempDirs.length) {
     await rm(tempDirs.pop()!, { recursive: true, force: true });
   }
+});
+
+describe("agent replies", () => {
+  test("missing reply file returns an empty exchange with the expected path", async () => {
+    const dir = await fresh();
+    const replies = await readAgentReplies(sampleRef, dir);
+
+    expect(replies.path).toBe(agentRepliesPath(sampleRef, dir));
+    expect(replies.body).toBe("");
+    expect(replies.updatedAt).toBeNull();
+  });
+
+  test("agent replies append timestamped markdown sections", async () => {
+    const dir = await fresh();
+    await writeAgentReply(sampleRef, "First answer.", {
+      dir,
+      now: new Date("2026-04-21T15:00:00Z"),
+    });
+    await writeAgentReply(sampleRef, "Second answer.", {
+      dir,
+      now: new Date("2026-04-21T15:05:00Z"),
+    });
+
+    const replies = await readAgentReplies(sampleRef, dir);
+    expect(replies.body).toContain("# jaunt agent replies");
+    expect(replies.body).toContain(
+      "## agent reply · 2026-04-21T15:00:00.000Z",
+    );
+    expect(replies.body).toContain("First answer.");
+    expect(replies.body).toContain("Second answer.");
+    expect(replies.updatedAt).not.toBeNull();
+  });
+
+  test("clearAgentReplies removes stale replies", async () => {
+    const dir = await fresh();
+    await writeAgentReply(sampleRef, "old answer", { dir });
+    await clearAgentReplies(sampleRef, dir);
+
+    const replies = await readAgentReplies(sampleRef, dir);
+    expect(replies.body).toBe("");
+    expect(replies.updatedAt).toBeNull();
+  });
 });
 
 describe("writeFeedback", () => {
@@ -65,5 +114,18 @@ describe("writeFeedback", () => {
     expect(
       content.match(/^# jaunt feedback/gm)?.length ?? 0,
     ).toBe(1);
+  });
+
+  test("question intent gets its own section label", async () => {
+    const dir = await fresh();
+    await writeFeedback(sampleRef, "Can you clarify line 12?", {
+      dir,
+      now: new Date("2026-04-21T15:00:00Z"),
+      intent: "question",
+    });
+
+    const content = await readFile(feedbackPath(sampleRef, dir), "utf-8");
+    expect(content).toContain("## question · 2026-04-21T15:00:00.000Z");
+    expect(content).toContain("Can you clarify line 12?");
   });
 });

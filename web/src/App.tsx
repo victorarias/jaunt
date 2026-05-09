@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchPR, refetchContent, submitReview } from "./api.ts";
-import type { PRPayload, SubmitTarget } from "./types.ts";
+import {
+  fetchAgentReplies,
+  fetchPR,
+  refetchContent,
+  sendAgentQuestion,
+  submitReview,
+} from "./api.ts";
+import type {
+  AgentAskContext,
+  AgentReplies,
+  PRPayload,
+  SubmitTarget,
+} from "./types.ts";
 import { composeReviewBody, type Verdict } from "../../src/compose.ts";
 import { fileStateOf, useDraft } from "./hooks/useDraft.ts";
 import { useHighlighter } from "./hooks/useHighlighter.ts";
@@ -12,6 +23,8 @@ import { SummaryCard } from "./components/SummaryCard.tsx";
 import { FileCard } from "./components/FileCard.tsx";
 import { DriveBar } from "./components/DriveBar.tsx";
 import { ErrorBanner } from "./components/ErrorBanner.tsx";
+import { AgentChannel } from "./components/AgentChannel.tsx";
+import { AgentRepliesPanel } from "./components/AgentRepliesPanel.tsx";
 import {
   SubmitDialog,
   type SubmitOutcome,
@@ -79,7 +92,12 @@ function Review({
 
   const files = pr.files;
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [askOpen, setAskOpen] = useState(false);
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
+  const [agentReplies, setAgentReplies] = useState<AgentReplies | null>(null);
+  const [agentWaitBaseline, setAgentWaitBaseline] = useState<
+    string | null | undefined
+  >(undefined);
 
   const mainRef = useRef<HTMLDivElement>(null);
 
@@ -118,10 +136,39 @@ function Review({
   });
 
   const openSubmit = useCallback(() => setSubmitOpen(true), []);
+  const openAsk = useCallback(() => setAskOpen(true), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadReplies() {
+      try {
+        const next = await fetchAgentReplies();
+        if (cancelled) return;
+        setAgentReplies(next);
+        if (
+          agentWaitBaseline !== undefined &&
+          next.body.trim() &&
+          next.updatedAt !== agentWaitBaseline
+        ) {
+          setAgentWaitBaseline(undefined);
+        }
+      } catch {
+        // Agent replies are advisory; don't block the review surface if the
+        // local exchange file cannot be read for a moment.
+      }
+    }
+
+    void loadReplies();
+    const id = window.setInterval(loadReplies, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [agentWaitBaseline]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (submitOpen) return;
+      if (submitOpen || askOpen) return;
       // Cmd/Ctrl+Enter from anywhere (textareas included) opens the submit
       // dialog — so reviewers can hit "send it" right after typing a comment
       // without having to blur out first.
@@ -160,6 +207,9 @@ function Review({
       } else if (e.key === "s" && files.length > 0) {
         e.preventDefault();
         openSubmit();
+      } else if (e.key === "a" && files.length > 0) {
+        e.preventDefault();
+        openAsk();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -175,7 +225,9 @@ function Review({
     nav.canNextAnn,
     nav.canPrevAnn,
     openSubmit,
+    openAsk,
     submitOpen,
+    askOpen,
     files.length,
   ]);
 
@@ -204,10 +256,39 @@ function Review({
       // Mid-review submit: wipe the content we just shipped so the next
       // submit is "what's new since", but keep reviewed marks intact.
       clearSubmittedContent();
+      if (result.target === "agent") {
+        setAgentWaitBaseline(agentReplies?.updatedAt ?? null);
+      }
     }
     return result.target === "github"
       ? { target: "github", url: result.url, finish: result.finish }
-      : { target: "agent", path: result.path, finish: result.finish };
+      : {
+          target: "agent",
+          path: result.path,
+          responsePath: result.responsePath,
+          finish: result.finish,
+        };
+  }
+
+  const sendAskToAgent = useCallback(
+    async (context: AgentAskContext, body: string): Promise<void> => {
+      const payload = formatAgentQuestion(context, body);
+      const result = await sendAgentQuestion(payload);
+      if (!result.ok) throw new Error(result.error);
+      if (result.target === "agent") {
+        setAgentWaitBaseline(agentReplies?.updatedAt ?? null);
+        setAskOpen(true);
+      }
+    },
+    [agentReplies?.updatedAt],
+  );
+
+  async function handleAgentQuestion(body: string): Promise<void> {
+    const context: AgentAskContext = {
+      path: nav.currentFile?.path ?? "PR summary",
+      source: "quick",
+    };
+    await sendAskToAgent(context, body);
   }
 
   if (!draft) {
@@ -252,6 +333,10 @@ function Review({
               }}
             />
           )}
+          <AgentRepliesPanel
+            replies={agentReplies}
+            waiting={agentWaitBaseline !== undefined}
+          />
           <SummaryCard meta={pr.meta} files={files} tour={pr.tour} />
           {files.map((f, i) => (
             <FileCard
@@ -268,6 +353,7 @@ function Review({
               onNoteChange={setFileNote}
               onSetReply={setAnnotationReply}
               onSetLineComment={setLineComment}
+              onAskAgent={sendAskToAgent}
             />
           ))}
           {files.length > 0 && (
@@ -308,8 +394,21 @@ function Review({
         onPrevAnn={() => nav.gotoAnnotation(-1)}
         onNextAnn={() => nav.gotoAnnotation(1)}
         onToggleReviewed={nav.toggleCurrentReviewed}
+        onOpenAsk={openAsk}
         onOpenSubmit={openSubmit}
       />
+
+      {askOpen && (
+        <AgentChannel
+          contextLabel={
+            nav.currentFile ? `Current file: ${nav.currentFile.path}` : "PR summary"
+          }
+          replies={agentReplies}
+          waiting={agentWaitBaseline !== undefined}
+          onClose={() => setAskOpen(false)}
+          onSend={handleAgentQuestion}
+        />
+      )}
 
       {submitOpen && (
         <SubmitDialog
@@ -321,4 +420,25 @@ function Review({
       )}
     </div>
   );
+}
+
+function formatAgentQuestion(context: AgentAskContext, body: string): string {
+  const location =
+    context.lineStart === undefined
+      ? context.path
+      : context.lineEnd && context.lineEnd !== context.lineStart
+        ? `${context.path}:${context.lineStart}-${context.lineEnd}`
+        : `${context.path}:${context.lineStart}`;
+  const parts = [
+    "**Question for agent**",
+    "",
+    `_Context: ${location}_`,
+  ];
+
+  if (context.code?.trim()) {
+    parts.push("", "Selected code:", "", "```", context.code, "```");
+  }
+
+  parts.push("", body);
+  return parts.join("\n");
 }

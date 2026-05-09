@@ -20,9 +20,15 @@ import { join } from "node:path";
 import { chromium, type Browser, type Locator, type Page } from "playwright";
 import type { ApiDeps } from "../../src/api-handlers.ts";
 import { clearDraft, loadDraft, saveDraft } from "../../src/drafts.ts";
-import { feedbackPath, writeFeedback } from "../../src/feedback.ts";
+import {
+  clearAgentReplies,
+  feedbackPath,
+  readAgentReplies,
+  writeAgentReply,
+  writeFeedback,
+} from "../../src/feedback.ts";
 import { startServer, type ServerHandle } from "../../src/server.ts";
-import type { PRPayload } from "../../src/types.ts";
+import type { PRPayload, SubmitResult } from "../../src/types.ts";
 import {
   makeAnnotation,
   makeFile,
@@ -45,6 +51,7 @@ afterAll(async () => {
 type Harness = {
   dir: string;
   github: { submitCalls: Array<{ body: string }> };
+  submits: SubmitResult[];
   server: ServerHandle;
   page: Page;
   pageErrors: string[];
@@ -94,6 +101,7 @@ async function bootstrap(
   const dir = await mkdtemp(join(tmpdir(), "jaunt-ui-e2e-"));
 
   const github = { submitCalls: [] as Array<{ body: string }> };
+  const submits: SubmitResult[] = [];
 
   const deps: ApiDeps = {
     fetchPR: async () => payload,
@@ -103,7 +111,13 @@ async function bootstrap(
       return `https://github.com/${sampleRef.owner}/${sampleRef.repo}/pull/${sampleRef.number}#pullrequestreview-1`;
     },
     writeFeedback: (ref, body, opts) =>
-      writeFeedback(ref, body, { dir, finish: opts?.finish }),
+      writeFeedback(ref, body, {
+        dir,
+        finish: opts?.finish,
+        intent: opts?.intent,
+      }),
+    loadAgentReplies: (ref) => readAgentReplies(ref, dir),
+    clearAgentReplies: (ref) => clearAgentReplies(ref, dir),
     loadDraft: (ref) => loadDraft(ref, { dir }),
     saveDraft: (d) => saveDraft(d, { dir }),
     clearDraft: (ref) => clearDraft(ref, { dir }),
@@ -114,6 +128,9 @@ async function bootstrap(
     tour: null,
     deps,
     open: false,
+    onSubmit: (result) => {
+      submits.push(result);
+    },
   });
 
   const page = await browser.newPage();
@@ -133,6 +150,7 @@ async function bootstrap(
   return {
     dir,
     github,
+    submits,
     server,
     page,
     pageErrors,
@@ -152,6 +170,16 @@ async function textOf(locator: Locator): Promise<string> {
 async function hasClass(locator: Locator, cls: string): Promise<boolean> {
   const classes = (await locator.getAttribute("class")) ?? "";
   return classes.split(/\s+/).includes(cls);
+}
+
+async function waitForSubmitCount(fx: Harness, count: number): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (fx.submits.length !== count) {
+    if (Date.now() > deadline) {
+      throw new Error(`timed out waiting for ${count} submit hook(s)`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
 }
 
 describe("ui e2e — real browser round-trip", () => {
@@ -252,6 +280,182 @@ describe("ui e2e — real browser round-trip", () => {
 
         // GitHub mock never called.
         expect(fx.github.submitCalls).toHaveLength(0);
+
+        expect(fx.pageErrors).toEqual([]);
+        expect(fx.consoleErrors).toEqual([]);
+      } finally {
+        await fx.cleanup();
+      }
+    },
+    90_000,
+  );
+
+  test(
+    "mid-review agent submit shows waiting state, then renders agent replies from disk",
+    async () => {
+      const fx = await bootstrap();
+      try {
+        await fx.page.locator(".submit-review").click();
+        const modal = fx.page.locator(".modal");
+        await modal.waitFor({ state: "visible", timeout: 5_000 });
+
+        await modal.locator(".modal-actions .btn.primary").click();
+        await modal.waitFor({ state: "hidden", timeout: 10_000 });
+
+        const panel = fx.page.locator(".agent-replies");
+        await panel.waitFor({ state: "visible", timeout: 5_000 });
+        expect(await textOf(panel)).toContain("Sent to agent");
+
+        await writeAgentReply(sampleRef, "Short answer: yes, keep reading.", {
+          dir: fx.dir,
+          now: new Date("2026-04-21T15:05:00Z"),
+        });
+
+        await fx.page.waitForFunction(
+          () =>
+            document
+              .querySelector(".agent-replies")
+              ?.textContent?.includes("Short answer: yes"),
+          undefined,
+          { timeout: 7_000 },
+        );
+        expect(await textOf(panel)).toContain("Replies from the agent");
+        expect(await textOf(panel)).toContain("Short answer: yes");
+
+        expect(fx.pageErrors).toEqual([]);
+        expect(fx.consoleErrors).toEqual([]);
+      } finally {
+        await fx.cleanup();
+      }
+    },
+    90_000,
+  );
+
+  test(
+    "quick Ask agent channel sends a question without clearing the review draft",
+    async () => {
+      const fx = await bootstrap();
+      try {
+        await fx.page.locator(".drive .next").click();
+        await fx.page
+          .locator("#stop-1")
+          .waitFor({ state: "visible", timeout: 5_000 });
+
+        const noteA = fx.page.locator('#stop-1 textarea[id^="note-"]');
+        await noteA.fill("Keep this draft note.");
+
+        await fx.page.locator(".ask-agent").click();
+        const channel = fx.page.locator(".agent-channel");
+        await channel.waitFor({ state: "visible", timeout: 5_000 });
+        expect(await textOf(channel.locator(".agent-channel-context"))).toContain(
+          "src/a.ts",
+        );
+
+        await channel
+          .locator("textarea")
+          .fill("Can you explain why this is not a race?");
+        await channel.locator(".btn.primary").click();
+
+        await fx.page.waitForFunction(
+          () =>
+            (document.querySelector(
+              ".agent-channel textarea",
+            ) as HTMLTextAreaElement | null)?.value === "",
+          undefined,
+          { timeout: 5_000 },
+        );
+        expect(await textOf(channel)).toContain("waiting for reply");
+        expect(await noteA.inputValue()).toBe("Keep this draft note.");
+        await waitForSubmitCount(fx, 1);
+        expect(fx.submits).toHaveLength(1);
+        expect(fx.submits[0]!.ok).toBe(true);
+        if (!fx.submits[0]!.ok || fx.submits[0]!.target !== "agent") {
+          throw new Error(`unexpected submit ${JSON.stringify(fx.submits[0])}`);
+        }
+        expect(fx.submits[0]!.intent).toBe("question");
+        expect(fx.submits[0]!.finish).toBe(false);
+
+        const content = await readFile(feedbackPath(sampleRef, fx.dir), "utf-8");
+        expect(content).toContain("**Question for agent**");
+        expect(content).toContain("_Context: src/a.ts_");
+        expect(content).toContain("Can you explain why this is not a race?");
+
+        await writeAgentReply(sampleRef, "Because the Lua script is atomic.", {
+          dir: fx.dir,
+          now: new Date("2026-04-21T15:08:00Z"),
+        });
+        await fx.page.waitForFunction(
+          () =>
+            document
+              .querySelector(".agent-channel")
+              ?.textContent?.includes("Because the Lua script is atomic."),
+          undefined,
+          { timeout: 7_000 },
+        );
+
+        expect(fx.pageErrors).toEqual([]);
+        expect(fx.consoleErrors).toEqual([]);
+      } finally {
+        await fx.cleanup();
+      }
+    },
+    90_000,
+  );
+
+  test(
+    "line comment Ask agent sends file+line context and clears only that transient question",
+    async () => {
+      const fx = await bootstrap();
+      try {
+        await fx.page.locator(".drive .next").click();
+        await fx.page
+          .locator("#stop-1")
+          .waitFor({ state: "visible", timeout: 5_000 });
+
+        await fx.page.locator("#stop-1 #line-2").hover();
+        await fx.page.locator("#stop-1 #line-2 .add-comment-btn").click();
+        const userThread = fx.page.locator("#stop-1 .user-thread");
+        await userThread.waitFor({ state: "visible", timeout: 5_000 });
+        await userThread
+          .locator("textarea")
+          .fill("Why is this safe if two requests arrive together?");
+        await userThread.locator(".ask-inline").click();
+
+        await userThread.waitFor({ state: "detached", timeout: 5_000 });
+        expect(await fx.page.locator(".modal").count()).toBe(0);
+        const channel = fx.page.locator(".agent-channel");
+        await channel.waitFor({ state: "visible", timeout: 5_000 });
+        expect(await textOf(channel)).toContain("waiting for reply");
+        await waitForSubmitCount(fx, 1);
+        expect(fx.submits).toHaveLength(1);
+        expect(fx.submits[0]!.ok).toBe(true);
+        if (!fx.submits[0]!.ok || fx.submits[0]!.target !== "agent") {
+          throw new Error(`unexpected submit ${JSON.stringify(fx.submits[0])}`);
+        }
+        expect(fx.submits[0]!.intent).toBe("question");
+        expect(fx.submits[0]!.finish).toBe(false);
+
+        const content = await readFile(feedbackPath(sampleRef, fx.dir), "utf-8");
+        expect(content).toContain("**Question for agent**");
+        expect(content).toContain("_Context: src/a.ts:2_");
+        expect(content).toContain("Selected code:");
+        expect(content).toContain("second line");
+        expect(content).toContain(
+          "Why is this safe if two requests arrive together?",
+        );
+
+        await writeAgentReply(sampleRef, "Line 2 is protected by the lock.", {
+          dir: fx.dir,
+          now: new Date("2026-04-21T15:10:00Z"),
+        });
+        await fx.page.waitForFunction(
+          () =>
+            document
+              .querySelector(".agent-channel")
+              ?.textContent?.includes("Line 2 is protected by the lock."),
+          undefined,
+          { timeout: 7_000 },
+        );
 
         expect(fx.pageErrors).toEqual([]);
         expect(fx.consoleErrors).toEqual([]);
@@ -534,16 +738,18 @@ describe("ui e2e — real browser round-trip", () => {
     async () => {
       const fx = await bootstrap();
       try {
-        // Advance to stop 1 so a reply textarea exists.
+        // Advance to stop 1 so a file-note textarea exists.
         await fx.page.locator(".drive .next").click();
         await fx.page
           .locator("#stop-1")
           .waitFor({ state: "visible", timeout: 5_000 });
 
-        // Focus a textarea and type into it.
-        const reply = fx.page.locator("#stop-1 .thread-reply textarea");
-        await reply.click();
-        await reply.type("hi");
+        // Focus a regular review-note textarea and type into it. Thread and
+        // line-comment boxes reserve Meta+Enter for "Ask agent"; file notes
+        // still use it as the fast path into final review submit.
+        const note = fx.page.locator('#stop-1 textarea[id^="note-"]');
+        await note.click();
+        await note.type("hi");
         expect(
           await fx.page.evaluate(() => document.activeElement?.tagName),
         ).toBe("TEXTAREA");

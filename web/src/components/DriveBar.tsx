@@ -16,6 +16,7 @@ type Props = {
   onPrevAnn: () => void;
   onNextAnn: () => void;
   onToggleReviewed: () => void;
+  onOpenAsk: () => void;
   onOpenSubmit: () => void;
 };
 
@@ -37,6 +38,7 @@ export function DriveBar({
   onPrevAnn,
   onNextAnn,
   onToggleReviewed,
+  onOpenAsk,
   onOpenSubmit,
 }: Props) {
   const lastStop = totalStops - 1;
@@ -89,6 +91,16 @@ export function DriveBar({
           <span className="kbd">R</span>
         </button>
       )}
+
+      <button
+        type="button"
+        className="ask-agent"
+        onClick={onOpenAsk}
+        title="Ask the agent a quick question"
+      >
+        Ask agent
+        <span className="kbd">A</span>
+      </button>
 
       <button
         type="button"

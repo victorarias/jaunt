@@ -110,6 +110,13 @@ export type Draft = {
 };
 
 export type SubmitTarget = "github" | "agent";
+export type SubmitIntent = "review" | "question";
+
+export type AgentReplies = {
+  path: string;
+  body: string;
+  updatedAt: string | null;
+};
 
 /**
  * `finish` carries the user's "end review after this submit" toggle. When
@@ -120,5 +127,12 @@ export type SubmitTarget = "github" | "agent";
  */
 export type SubmitResult =
   | { ok: true; target: "github"; url: string; finish: boolean }
-  | { ok: true; target: "agent"; path: string; finish: boolean }
+  | {
+      ok: true;
+      target: "agent";
+      path: string;
+      responsePath: string;
+      intent: SubmitIntent;
+      finish: boolean;
+    }
   | { ok: false; error: string };

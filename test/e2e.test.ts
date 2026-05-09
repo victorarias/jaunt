@@ -15,7 +15,12 @@ import { join } from "node:path";
 import { createApiHandlers, type ApiDeps } from "../src/api-handlers.ts";
 import { composeReviewBody } from "../src/compose.ts";
 import { clearDraft, loadDraft, saveDraft } from "../src/drafts.ts";
-import { feedbackPath, writeFeedback } from "../src/feedback.ts";
+import {
+  clearAgentReplies,
+  readAgentReplies,
+  feedbackPath,
+  writeFeedback,
+} from "../src/feedback.ts";
 import { makeAnnotation, makeFile, makePayload, sampleRef } from "./fixtures.ts";
 
 const tempDirs: string[] = [];
@@ -48,7 +53,14 @@ function makeDeps(
       }
       return opts.onSubmit(body);
     },
-    writeFeedback: (ref, body) => writeFeedback(ref, body, { dir: opts.dir }),
+    writeFeedback: (ref, body, writeOpts) =>
+      writeFeedback(ref, body, {
+        dir: opts.dir,
+        finish: writeOpts?.finish,
+        intent: writeOpts?.intent,
+      }),
+    loadAgentReplies: (ref) => readAgentReplies(ref, opts.dir),
+    clearAgentReplies: (ref) => clearAgentReplies(ref, opts.dir),
     loadDraft: (ref) => loadDraft(ref, { dir: opts.dir }),
     saveDraft: (d) => saveDraft(d, { dir: opts.dir }),
     clearDraft: (ref) => clearDraft(ref, { dir: opts.dir }),
@@ -108,6 +120,8 @@ describe("e2e — thread reply round-trip to agent feedback file", () => {
       );
     }
     expect(result.path).toBe(feedbackPath(sampleRef, dir));
+    expect(result.responsePath).toContain(".agent.md");
+    expect(result.intent).toBe("review");
     expect(result.finish).toBe(true);
 
     // Feedback file contains the composed body + header.

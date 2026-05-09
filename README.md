@@ -38,6 +38,8 @@ You review in the browser. Reply inline to the agent's pinned notes, add your ow
 
 When you've got something for the agent, hit **Submit**. The default sends your notes back to the agent and **leaves the server up** — so you can keep reading, keep adding comments, and submit again as often as you want. Each submit appends a new section to the feedback file.
 
+If you ask a question or need a quick clarification mid-review, use **Ask agent** from the drive bar or from a line comment box. Line-level asks carry the file, line, and selected code automatically, and the invoking agent can answer back into `~/.jaunt/<ref>.agent.md`. The browser polls that local reply file and shows the answer in the tour, so the loop stays in the jaunt tab.
+
 When you're actually done, tick **End review after this submit** in the submit dialog. That's the signal that hands control back to the agent: the server exits, the agent reads every round of feedback you sent, addresses the points, commits the changes, and re-launches the tour on the same URL. Refresh the tab — a fresh draft, updated code, and you go again.
 
 You can also submit to GitHub directly as a review comment, if you'd rather post publicly than iterate with the agent.

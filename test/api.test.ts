@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ApiDeps } from "../src/api-handlers.ts";
 import { createApiHandlers } from "../src/api-handlers.ts";
-import type { Draft, PRRef } from "../src/types.ts";
+import type { Draft, PRRef, SubmitIntent } from "../src/types.ts";
 import { makeDraft, makeFile, makePayload, sampleRef } from "./fixtures.ts";
 
 type FakeDeps = {
@@ -10,7 +10,13 @@ type FakeDeps = {
     fetchPR: number;
     fetchFileContent: Array<{ sha: string; path: string }>;
     submitReviewComment: Array<{ ref: PRRef; body: string }>;
-    writeFeedback: Array<{ ref: PRRef; body: string; opts?: { finish?: boolean } }>;
+    writeFeedback: Array<{
+      ref: PRRef;
+      body: string;
+      opts?: { finish?: boolean; intent?: SubmitIntent };
+    }>;
+    loadAgentReplies: number;
+    clearAgentReplies: number;
     loadDraft: number;
     saveDraft: number;
     clearDraft: number;
@@ -24,6 +30,8 @@ function makeFakeDeps(overrides: Partial<ApiDeps> = {}): FakeDeps {
     fetchFileContent: [] as FakeDeps["calls"]["fetchFileContent"],
     submitReviewComment: [] as FakeDeps["calls"]["submitReviewComment"],
     writeFeedback: [] as FakeDeps["calls"]["writeFeedback"],
+    loadAgentReplies: 0,
+    clearAgentReplies: 0,
     loadDraft: 0,
     saveDraft: 0,
     clearDraft: 0,
@@ -46,6 +54,17 @@ function makeFakeDeps(overrides: Partial<ApiDeps> = {}): FakeDeps {
     writeFeedback: async (ref, body, opts) => {
       calls.writeFeedback.push({ ref, body, opts });
       return `/tmp/fake-feedback/${ref.owner}_${ref.repo}_${ref.number}.feedback.md`;
+    },
+    loadAgentReplies: async (ref) => {
+      calls.loadAgentReplies += 1;
+      return {
+        path: `/tmp/fake-feedback/${ref.owner}_${ref.repo}_${ref.number}.agent.md`,
+        body: "",
+        updatedAt: null,
+      };
+    },
+    clearAgentReplies: async () => {
+      calls.clearAgentReplies += 1;
     },
     loadDraft: async () => {
       calls.loadDraft += 1;
@@ -223,6 +242,19 @@ describe("createApiHandlers.putDraft", () => {
   });
 });
 
+describe("createApiHandlers.getAgentReplies", () => {
+  test("loads the local agent reply channel through deps", async () => {
+    const { deps, calls } = makeFakeDeps();
+    const h = createApiHandlers({ ref: sampleRef, tour: null, deps });
+
+    const replies = await h.getAgentReplies();
+
+    expect(replies.path).toContain(".agent.md");
+    expect(replies.body).toBe("");
+    expect(calls.loadAgentReplies).toBe(1);
+  });
+});
+
 describe("createApiHandlers.submit", () => {
   test("target=github, finish=true calls submitReviewComment, clears draft, returns url + finish", async () => {
     const { deps, calls } = makeFakeDeps();
@@ -240,6 +272,7 @@ describe("createApiHandlers.submit", () => {
     expect(calls.submitReviewComment[0]!.body).toBe("the body");
     expect(calls.writeFeedback).toHaveLength(0);
     expect(calls.clearDraft).toBe(1);
+    expect(calls.clearAgentReplies).toBe(1);
   });
 
   test("target=agent, finish=true writes feedback with finish=true, clears draft", async () => {
@@ -252,13 +285,18 @@ describe("createApiHandlers.submit", () => {
     expect(result.target).toBe("agent");
     if (result.target !== "agent") throw new Error("unreachable");
     expect(result.path).toContain(".feedback.md");
+    expect(result.responsePath).toContain(".agent.md");
     expect(result.finish).toBe(true);
 
     expect(calls.writeFeedback).toHaveLength(1);
     expect(calls.writeFeedback[0]!.body).toBe("agent body");
-    expect(calls.writeFeedback[0]!.opts).toEqual({ finish: true });
+    expect(calls.writeFeedback[0]!.opts).toEqual({
+      finish: true,
+      intent: "review",
+    });
     expect(calls.submitReviewComment).toHaveLength(0);
     expect(calls.clearDraft).toBe(1);
+    expect(calls.clearAgentReplies).toBe(1);
   });
 
   test("finish=false on agent target appends to feedback and does NOT clear the draft", async () => {
@@ -270,10 +308,31 @@ describe("createApiHandlers.submit", () => {
     if (!result.ok) throw new Error("unreachable");
     if (result.target !== "agent") throw new Error("unreachable");
     expect(result.finish).toBe(false);
+    expect(result.responsePath).toContain(".agent.md");
 
     expect(calls.writeFeedback).toHaveLength(1);
-    expect(calls.writeFeedback[0]!.opts).toEqual({ finish: false });
+    expect(calls.writeFeedback[0]!.opts).toEqual({
+      finish: false,
+      intent: "review",
+    });
     // Crucial: draft survives so the reviewer can keep going with reviewed marks.
+    expect(calls.clearDraft).toBe(0);
+    expect(calls.clearAgentReplies).toBe(0);
+  });
+
+  test("target=agent with question intent writes a question submission and returns intent", async () => {
+    const { deps, calls } = makeFakeDeps();
+    const h = createApiHandlers({ ref: sampleRef, tour: null, deps });
+
+    const result = await h.submit("question body", "agent", false, "question");
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.target !== "agent") throw new Error("unreachable");
+    expect(result.intent).toBe("question");
+    expect(result.responsePath).toContain(".agent.md");
+    expect(calls.writeFeedback[0]!.opts).toEqual({
+      finish: false,
+      intent: "question",
+    });
     expect(calls.clearDraft).toBe(0);
   });
 
@@ -289,6 +348,7 @@ describe("createApiHandlers.submit", () => {
 
     expect(calls.submitReviewComment).toHaveLength(1);
     expect(calls.clearDraft).toBe(0);
+    expect(calls.clearAgentReplies).toBe(0);
   });
 
   test("returns ok:false when the dep throws, and does NOT clear the draft", async () => {

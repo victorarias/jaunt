@@ -1,4 +1,5 @@
 export type {
+  AgentReplies,
   Annotation,
   Comment,
   Draft,
@@ -17,3 +18,11 @@ export type {
   SubmitTarget,
   TourMeta,
 } from "../../src/types.ts";
+
+export type AgentAskContext = {
+  path: string;
+  lineStart?: number;
+  lineEnd?: number;
+  code?: string;
+  source: "quick" | "line-comment" | "annotation-reply";
+};

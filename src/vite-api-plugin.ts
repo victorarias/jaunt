@@ -2,7 +2,13 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
 import { createApiHandlers, type ApiDeps } from "./api-handlers.ts";
 import type { Tour } from "./tour.ts";
-import type { Draft, PRRef, SubmitResult, SubmitTarget } from "./types.ts";
+import type {
+  Draft,
+  PRRef,
+  SubmitIntent,
+  SubmitResult,
+  SubmitTarget,
+} from "./types.ts";
 
 export type SubmitHook = (result: SubmitResult) => void | Promise<void>;
 
@@ -19,6 +25,10 @@ export function apiPlugin(opts: {
     configureServer(server) {
       server.middlewares.use("/api/pr", async (_req, res) => {
         await respondJSON(res, () => handlers.getPR());
+      });
+
+      server.middlewares.use("/api/agent-replies", async (_req, res) => {
+        await respondJSON(res, () => handlers.getAgentReplies());
       });
 
       server.middlewares.use("/api/refetch-content", async (req, res) => {
@@ -67,15 +77,18 @@ export function apiPlugin(opts: {
             body: reviewBody,
             target,
             finish,
+            intent,
           } = JSON.parse(body) as {
             body: string;
             target?: SubmitTarget;
             finish?: boolean;
+            intent?: SubmitIntent;
           };
           const r = await handlers.submit(
             reviewBody,
             target ?? "github",
             finish === true,
+            intent ?? "review",
           );
           captured.value = r;
           return r;
