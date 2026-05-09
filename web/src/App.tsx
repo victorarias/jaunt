@@ -105,6 +105,10 @@ function Review({
   const [agentWaitBaseline, setAgentWaitBaseline] = useState<
     string | null | undefined
   >(undefined);
+  // Mirror of the latest transcript so callbacks can read it without
+  // depending on agentTranscript (which polls every 2.5s and would
+  // otherwise bust FileCard memoization on every poll).
+  const transcriptRef = useRef<AgentTranscript | null>(null);
 
   const mainRef = useRef<HTMLDivElement>(null);
 
@@ -152,6 +156,7 @@ function Review({
         const next = await fetchAgentTranscript();
         if (cancelled) return;
         setAgentTranscript(next);
+        transcriptRef.current = next;
         const newAgentAt = lastAgentAt(next);
         if (
           agentWaitBaseline !== undefined &&
@@ -265,7 +270,7 @@ function Review({
       // submit is "what's new since", but keep reviewed marks intact.
       clearSubmittedContent();
       if (result.target === "agent") {
-        setAgentWaitBaseline(lastAgentAt(agentTranscript));
+        setAgentWaitBaseline(lastAgentAt(transcriptRef.current));
       }
     }
     return result.target === "github"
@@ -284,11 +289,11 @@ function Review({
       const result = await sendAgentQuestion(payload);
       if (!result.ok) throw new Error(result.error);
       if (result.target === "agent") {
-        setAgentWaitBaseline(lastAgentAt(agentTranscript));
+        setAgentWaitBaseline(lastAgentAt(transcriptRef.current));
         setAskOpen(true);
       }
     },
-    [agentTranscript],
+    [],
   );
 
   async function handleAgentQuestion(body: string): Promise<void> {

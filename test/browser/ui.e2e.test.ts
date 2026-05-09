@@ -477,6 +477,12 @@ describe("ui e2e — real browser round-trip", () => {
           { timeout: 7_000 },
         );
 
+        // Critical: the line-comment draft must be cleared, not just the
+        // form closed. Otherwise hasComment would re-open the form on the
+        // next render and leak the question text into the final review
+        // submission as a normal line comment.
+        expect(await fx.page.locator("#stop-1 .user-thread").count()).toBe(0);
+
         expect(fx.pageErrors).toEqual([]);
         expect(fx.consoleErrors).toEqual([]);
       } finally {

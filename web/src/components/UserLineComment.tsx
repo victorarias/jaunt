@@ -31,6 +31,10 @@ export function UserLineComment({
     setError(null);
     try {
       await onAskAgent(body);
+      // Clear the underlying line-comment draft — the question was
+      // routed to the agent channel, it must not also leak into the
+      // eventual review submission as a normal line comment.
+      onChange("");
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
