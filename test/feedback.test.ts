@@ -6,7 +6,7 @@ import {
   agentRepliesPath,
   clearAgentReplies,
   feedbackPath,
-  readAgentReplies,
+  readAgentTranscript,
   writeAgentReply,
   writeFeedback,
 } from "../src/feedback.ts";
@@ -26,45 +26,91 @@ afterEach(async () => {
   }
 });
 
-describe("agent replies", () => {
-  test("missing reply file returns an empty exchange with the expected path", async () => {
+describe("agent transcript", () => {
+  test("with neither file present, returns an empty transcript pinned to the expected path", async () => {
     const dir = await fresh();
-    const replies = await readAgentReplies(sampleRef, dir);
+    const t = await readAgentTranscript(sampleRef, dir);
 
-    expect(replies.path).toBe(agentRepliesPath(sampleRef, dir));
-    expect(replies.body).toBe("");
-    expect(replies.updatedAt).toBeNull();
+    expect(t.path).toBe(agentRepliesPath(sampleRef, dir));
+    expect(t.entries).toEqual([]);
+    expect(t.updatedAt).toBeNull();
   });
 
-  test("agent replies append timestamped markdown sections", async () => {
+  test("merges question sections from feedback with agent reply sections, oldest first", async () => {
     const dir = await fresh();
+    await writeFeedback(sampleRef, "Can you clarify line 12?", {
+      dir,
+      now: new Date("2026-04-21T14:30:00Z"),
+      intent: "question",
+    });
     await writeAgentReply(sampleRef, "First answer.", {
       dir,
-      now: new Date("2026-04-21T15:00:00Z"),
+      now: new Date("2026-04-21T14:32:00Z"),
+    });
+    // Out-of-order writes should still surface in chronological order.
+    await writeFeedback(sampleRef, "Reviewer follow-up.", {
+      dir,
+      now: new Date("2026-04-21T14:34:00Z"),
+      intent: "question",
     });
     await writeAgentReply(sampleRef, "Second answer.", {
       dir,
-      now: new Date("2026-04-21T15:05:00Z"),
+      now: new Date("2026-04-21T14:36:00Z"),
     });
 
-    const replies = await readAgentReplies(sampleRef, dir);
-    expect(replies.body).toContain("# jaunt agent replies");
-    expect(replies.body).toContain(
-      "## agent reply · 2026-04-21T15:00:00.000Z",
-    );
-    expect(replies.body).toContain("First answer.");
-    expect(replies.body).toContain("Second answer.");
-    expect(replies.updatedAt).not.toBeNull();
+    const t = await readAgentTranscript(sampleRef, dir);
+    expect(t.entries.map((e) => e.role)).toEqual([
+      "user",
+      "agent",
+      "user",
+      "agent",
+    ]);
+    expect(t.entries[0]?.body).toBe("Can you clarify line 12?");
+    expect(t.entries[1]?.body).toBe("First answer.");
+    expect(t.entries[2]?.body).toBe("Reviewer follow-up.");
+    expect(t.entries[3]?.body).toBe("Second answer.");
+    expect(t.updatedAt).toBe("2026-04-21T14:36:00.000Z");
   });
 
-  test("clearAgentReplies removes stale replies", async () => {
+  test("submission and final submission sections are not part of the transcript", async () => {
     const dir = await fresh();
-    await writeAgentReply(sampleRef, "old answer", { dir });
+    await writeFeedback(sampleRef, "first round", {
+      dir,
+      now: new Date("2026-04-21T14:30:00Z"),
+    });
+    await writeFeedback(sampleRef, "wrap-up", {
+      dir,
+      now: new Date("2026-04-21T14:45:00Z"),
+      finish: true,
+    });
+    await writeFeedback(sampleRef, "Quick clarification?", {
+      dir,
+      now: new Date("2026-04-21T14:50:00Z"),
+      intent: "question",
+    });
+
+    const t = await readAgentTranscript(sampleRef, dir);
+    expect(t.entries).toHaveLength(1);
+    expect(t.entries[0]?.role).toBe("user");
+    expect(t.entries[0]?.body).toBe("Quick clarification?");
+  });
+
+  test("clearAgentReplies wipes the agent file but keeps user questions visible", async () => {
+    const dir = await fresh();
+    await writeFeedback(sampleRef, "still pending", {
+      dir,
+      now: new Date("2026-04-21T15:00:00Z"),
+      intent: "question",
+    });
+    await writeAgentReply(sampleRef, "old answer", {
+      dir,
+      now: new Date("2026-04-21T15:01:00Z"),
+    });
     await clearAgentReplies(sampleRef, dir);
 
-    const replies = await readAgentReplies(sampleRef, dir);
-    expect(replies.body).toBe("");
-    expect(replies.updatedAt).toBeNull();
+    const t = await readAgentTranscript(sampleRef, dir);
+    expect(t.entries.map((e) => e.role)).toEqual(["user"]);
+    expect(t.entries[0]?.body).toBe("still pending");
   });
 });
 

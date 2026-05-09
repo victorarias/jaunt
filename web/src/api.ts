@@ -1,5 +1,5 @@
 import type {
-  AgentReplies,
+  AgentTranscript,
   Draft,
   PRPayload,
   SubmitResult,
@@ -22,9 +22,9 @@ export async function refetchContent(paths: string[]): Promise<PRPayload> {
   return resp.json();
 }
 
-export async function fetchAgentReplies(): Promise<AgentReplies> {
-  const resp = await fetch("/api/agent-replies");
-  if (!resp.ok) throw new Error(`fetch agent replies failed (${resp.status})`);
+export async function fetchAgentTranscript(): Promise<AgentTranscript> {
+  const resp = await fetch("/api/agent-transcript");
+  if (!resp.ok) throw new Error(`fetch agent transcript failed (${resp.status})`);
   return resp.json();
 }
 

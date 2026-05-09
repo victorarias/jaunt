@@ -17,7 +17,7 @@ import { composeReviewBody } from "../src/compose.ts";
 import { clearDraft, loadDraft, saveDraft } from "../src/drafts.ts";
 import {
   clearAgentReplies,
-  readAgentReplies,
+  readAgentTranscript,
   feedbackPath,
   writeFeedback,
 } from "../src/feedback.ts";
@@ -59,7 +59,7 @@ function makeDeps(
         finish: writeOpts?.finish,
         intent: writeOpts?.intent,
       }),
-    loadAgentReplies: (ref) => readAgentReplies(ref, opts.dir),
+    loadAgentTranscript: (ref) => readAgentTranscript(ref, opts.dir),
     clearAgentReplies: (ref) => clearAgentReplies(ref, opts.dir),
     loadDraft: (ref) => loadDraft(ref, { dir: opts.dir }),
     saveDraft: (d) => saveDraft(d, { dir: opts.dir }),

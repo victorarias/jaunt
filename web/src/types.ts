@@ -1,5 +1,5 @@
 export type {
-  AgentReplies,
+  AgentTranscript,
   Annotation,
   Comment,
   Draft,
@@ -17,6 +17,7 @@ export type {
   SubmitResult,
   SubmitTarget,
   TourMeta,
+  TranscriptEntry,
 } from "../../src/types.ts";
 
 export type AgentAskContext = {

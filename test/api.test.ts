@@ -15,7 +15,7 @@ type FakeDeps = {
       body: string;
       opts?: { finish?: boolean; intent?: SubmitIntent };
     }>;
-    loadAgentReplies: number;
+    loadAgentTranscript: number;
     clearAgentReplies: number;
     loadDraft: number;
     saveDraft: number;
@@ -30,7 +30,7 @@ function makeFakeDeps(overrides: Partial<ApiDeps> = {}): FakeDeps {
     fetchFileContent: [] as FakeDeps["calls"]["fetchFileContent"],
     submitReviewComment: [] as FakeDeps["calls"]["submitReviewComment"],
     writeFeedback: [] as FakeDeps["calls"]["writeFeedback"],
-    loadAgentReplies: 0,
+    loadAgentTranscript: 0,
     clearAgentReplies: 0,
     loadDraft: 0,
     saveDraft: 0,
@@ -55,11 +55,11 @@ function makeFakeDeps(overrides: Partial<ApiDeps> = {}): FakeDeps {
       calls.writeFeedback.push({ ref, body, opts });
       return `/tmp/fake-feedback/${ref.owner}_${ref.repo}_${ref.number}.feedback.md`;
     },
-    loadAgentReplies: async (ref) => {
-      calls.loadAgentReplies += 1;
+    loadAgentTranscript: async (ref) => {
+      calls.loadAgentTranscript += 1;
       return {
         path: `/tmp/fake-feedback/${ref.owner}_${ref.repo}_${ref.number}.agent.md`,
-        body: "",
+        entries: [],
         updatedAt: null,
       };
     },
@@ -242,16 +242,16 @@ describe("createApiHandlers.putDraft", () => {
   });
 });
 
-describe("createApiHandlers.getAgentReplies", () => {
-  test("loads the local agent reply channel through deps", async () => {
+describe("createApiHandlers.getAgentTranscript", () => {
+  test("loads the local agent transcript through deps", async () => {
     const { deps, calls } = makeFakeDeps();
     const h = createApiHandlers({ ref: sampleRef, tour: null, deps });
 
-    const replies = await h.getAgentReplies();
+    const transcript = await h.getAgentTranscript();
 
-    expect(replies.path).toContain(".agent.md");
-    expect(replies.body).toBe("");
-    expect(calls.loadAgentReplies).toBe(1);
+    expect(transcript.path).toContain(".agent.md");
+    expect(transcript.entries).toEqual([]);
+    expect(calls.loadAgentTranscript).toBe(1);
   });
 });
 

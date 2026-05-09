@@ -13,7 +13,7 @@ import {
 import { clearDraft, loadDraft, saveDraft } from "./drafts.ts";
 import {
   clearAgentReplies,
-  readAgentReplies,
+  readAgentTranscript,
   writeFeedback,
 } from "./feedback.ts";
 import type { ApiDeps } from "./api-handlers.ts";
@@ -94,7 +94,7 @@ async function main() {
     fetchFileContent,
     submitReviewComment,
     writeFeedback,
-    loadAgentReplies: readAgentReplies,
+    loadAgentTranscript: readAgentTranscript,
     clearAgentReplies,
     loadDraft,
     saveDraft,

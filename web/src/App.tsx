@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  fetchAgentReplies,
+  fetchAgentTranscript,
   fetchPR,
   refetchContent,
   sendAgentQuestion,
@@ -8,7 +8,7 @@ import {
 } from "./api.ts";
 import type {
   AgentAskContext,
-  AgentReplies,
+  AgentTranscript,
   PRPayload,
   SubmitTarget,
 } from "./types.ts";
@@ -24,7 +24,7 @@ import { FileCard } from "./components/FileCard.tsx";
 import { DriveBar } from "./components/DriveBar.tsx";
 import { ErrorBanner } from "./components/ErrorBanner.tsx";
 import { AgentChannel } from "./components/AgentChannel.tsx";
-import { AgentRepliesPanel } from "./components/AgentRepliesPanel.tsx";
+import { AgentTranscriptPanel } from "./components/AgentTranscriptPanel.tsx";
 import {
   SubmitDialog,
   type SubmitOutcome,
@@ -94,7 +94,14 @@ function Review({
   const [submitOpen, setSubmitOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
-  const [agentReplies, setAgentReplies] = useState<AgentReplies | null>(null);
+  const [agentTranscript, setAgentTranscript] =
+    useState<AgentTranscript | null>(null);
+  // Baseline tracks the timestamp of the latest *agent* entry at the moment
+  // the reviewer sent a question. `undefined` = not waiting; a string-or-null
+  // value = waiting until lastAgentAt(transcript) advances past it. We can't
+  // baseline on transcript.updatedAt because that bumps when the user posts a
+  // question too — which would falsely clear the wait before the agent
+  // actually replied.
   const [agentWaitBaseline, setAgentWaitBaseline] = useState<
     string | null | undefined
   >(undefined);
@@ -140,26 +147,27 @@ function Review({
 
   useEffect(() => {
     let cancelled = false;
-    async function loadReplies() {
+    async function loadTranscript() {
       try {
-        const next = await fetchAgentReplies();
+        const next = await fetchAgentTranscript();
         if (cancelled) return;
-        setAgentReplies(next);
+        setAgentTranscript(next);
+        const newAgentAt = lastAgentAt(next);
         if (
           agentWaitBaseline !== undefined &&
-          next.body.trim() &&
-          next.updatedAt !== agentWaitBaseline
+          newAgentAt !== null &&
+          newAgentAt !== agentWaitBaseline
         ) {
           setAgentWaitBaseline(undefined);
         }
       } catch {
-        // Agent replies are advisory; don't block the review surface if the
-        // local exchange file cannot be read for a moment.
+        // Transcript is advisory; don't block the review surface if the
+        // local exchange files can't be read for a moment.
       }
     }
 
-    void loadReplies();
-    const id = window.setInterval(loadReplies, 2500);
+    void loadTranscript();
+    const id = window.setInterval(loadTranscript, 2500);
     return () => {
       cancelled = true;
       window.clearInterval(id);
@@ -257,7 +265,7 @@ function Review({
       // submit is "what's new since", but keep reviewed marks intact.
       clearSubmittedContent();
       if (result.target === "agent") {
-        setAgentWaitBaseline(agentReplies?.updatedAt ?? null);
+        setAgentWaitBaseline(lastAgentAt(agentTranscript));
       }
     }
     return result.target === "github"
@@ -276,11 +284,11 @@ function Review({
       const result = await sendAgentQuestion(payload);
       if (!result.ok) throw new Error(result.error);
       if (result.target === "agent") {
-        setAgentWaitBaseline(agentReplies?.updatedAt ?? null);
+        setAgentWaitBaseline(lastAgentAt(agentTranscript));
         setAskOpen(true);
       }
     },
-    [agentReplies?.updatedAt],
+    [agentTranscript],
   );
 
   async function handleAgentQuestion(body: string): Promise<void> {
@@ -333,8 +341,8 @@ function Review({
               }}
             />
           )}
-          <AgentRepliesPanel
-            replies={agentReplies}
+          <AgentTranscriptPanel
+            transcript={agentTranscript}
             waiting={agentWaitBaseline !== undefined}
           />
           <SummaryCard meta={pr.meta} files={files} tour={pr.tour} />
@@ -403,7 +411,7 @@ function Review({
           contextLabel={
             nav.currentFile ? `Current file: ${nav.currentFile.path}` : "PR summary"
           }
-          replies={agentReplies}
+          transcript={agentTranscript}
           waiting={agentWaitBaseline !== undefined}
           onClose={() => setAskOpen(false)}
           onSend={handleAgentQuestion}
@@ -420,6 +428,15 @@ function Review({
       )}
     </div>
   );
+}
+
+function lastAgentAt(t: AgentTranscript | null): string | null {
+  if (!t) return null;
+  for (let i = t.entries.length - 1; i >= 0; i--) {
+    const e = t.entries[i];
+    if (e?.role === "agent") return e.at;
+  }
+  return null;
 }
 
 function formatAgentQuestion(context: AgentAskContext, body: string): string {

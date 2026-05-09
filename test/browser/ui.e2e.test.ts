@@ -23,7 +23,7 @@ import { clearDraft, loadDraft, saveDraft } from "../../src/drafts.ts";
 import {
   clearAgentReplies,
   feedbackPath,
-  readAgentReplies,
+  readAgentTranscript,
   writeAgentReply,
   writeFeedback,
 } from "../../src/feedback.ts";
@@ -116,7 +116,7 @@ async function bootstrap(
         finish: opts?.finish,
         intent: opts?.intent,
       }),
-    loadAgentReplies: (ref) => readAgentReplies(ref, dir),
+    loadAgentTranscript: (ref) => readAgentTranscript(ref, dir),
     clearAgentReplies: (ref) => clearAgentReplies(ref, dir),
     loadDraft: (ref) => loadDraft(ref, { dir }),
     saveDraft: (d) => saveDraft(d, { dir }),
@@ -302,7 +302,7 @@ describe("ui e2e — real browser round-trip", () => {
         await modal.locator(".modal-actions .btn.primary").click();
         await modal.waitFor({ state: "hidden", timeout: 10_000 });
 
-        const panel = fx.page.locator(".agent-replies");
+        const panel = fx.page.locator(".agent-transcript-panel");
         await panel.waitFor({ state: "visible", timeout: 5_000 });
         expect(await textOf(panel)).toContain("Sent to agent");
 
@@ -314,12 +314,12 @@ describe("ui e2e — real browser round-trip", () => {
         await fx.page.waitForFunction(
           () =>
             document
-              .querySelector(".agent-replies")
+              .querySelector(".agent-transcript-panel")
               ?.textContent?.includes("Short answer: yes"),
           undefined,
           { timeout: 7_000 },
         );
-        expect(await textOf(panel)).toContain("Replies from the agent");
+        expect(await textOf(panel)).toContain("Transcript");
         expect(await textOf(panel)).toContain("Short answer: yes");
 
         expect(fx.pageErrors).toEqual([]);

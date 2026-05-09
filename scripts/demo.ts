@@ -14,7 +14,7 @@ import { clearDraft, loadDraft, saveDraft } from "../src/drafts.ts";
 import {
   clearAgentReplies,
   feedbackPath,
-  readAgentReplies,
+  readAgentTranscript,
   writeFeedback,
 } from "../src/feedback.ts";
 import { startServer } from "../src/server.ts";
@@ -431,7 +431,7 @@ async function main() {
       console.log(`\n[demo] wrote feedback → ${path}\n`);
       return path;
     },
-    loadAgentReplies: (r) => readAgentReplies(r, dir),
+    loadAgentTranscript: (r) => readAgentTranscript(r, dir),
     clearAgentReplies: (r) => clearAgentReplies(r, dir),
     loadDraft: (r) => loadDraft(r, { dir }),
     saveDraft: (d) => saveDraft(d, { dir }),

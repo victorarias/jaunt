@@ -27,8 +27,8 @@ export function apiPlugin(opts: {
         await respondJSON(res, () => handlers.getPR());
       });
 
-      server.middlewares.use("/api/agent-replies", async (_req, res) => {
-        await respondJSON(res, () => handlers.getAgentReplies());
+      server.middlewares.use("/api/agent-transcript", async (_req, res) => {
+        await respondJSON(res, () => handlers.getAgentTranscript());
       });
 
       server.middlewares.use("/api/refetch-content", async (req, res) => {

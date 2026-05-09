@@ -1,7 +1,7 @@
 import { applyTour, type Tour } from "./tour.ts";
 import { createContentResolver, type RemoteFetch } from "./content.ts";
 import type {
-  AgentReplies,
+  AgentTranscript,
   ContentResult,
   Draft,
   FileError,
@@ -21,7 +21,7 @@ export type ApiDeps = {
     body: string,
     opts?: { finish?: boolean; intent?: SubmitIntent },
   ) => Promise<string>;
-  loadAgentReplies: (ref: PRRef) => Promise<AgentReplies>;
+  loadAgentTranscript: (ref: PRRef) => Promise<AgentTranscript>;
   clearAgentReplies: (ref: PRRef) => Promise<void>;
   loadDraft: (ref: PRRef) => Promise<Draft>;
   saveDraft: (draft: Draft) => Promise<Draft>;
@@ -31,7 +31,7 @@ export type ApiDeps = {
 export type ApiHandlers = {
   getPR(): Promise<PRPayload>;
   refetchContent(paths: string[]): Promise<PRPayload>;
-  getAgentReplies(): Promise<AgentReplies>;
+  getAgentTranscript(): Promise<AgentTranscript>;
   getDraft(): Promise<Draft>;
   putDraft(draft: Draft): Promise<Draft>;
   submit(
@@ -114,7 +114,7 @@ export function createApiHandlers(opts: {
   return {
     getPR,
     refetchContent,
-    getAgentReplies: () => opts.deps.loadAgentReplies(opts.ref),
+    getAgentTranscript: () => opts.deps.loadAgentTranscript(opts.ref),
     getDraft: () => opts.deps.loadDraft(opts.ref),
     putDraft: (draft) => opts.deps.saveDraft(draft),
     async submit(body, target, finish, intent = "review") {
@@ -131,7 +131,7 @@ export function createApiHandlers(opts: {
           finish,
           intent,
         });
-        const replies = await opts.deps.loadAgentReplies(opts.ref);
+        const transcript = await opts.deps.loadAgentTranscript(opts.ref);
         if (finish) {
           await opts.deps.clearDraft(opts.ref);
           await opts.deps.clearAgentReplies(opts.ref);
@@ -140,7 +140,7 @@ export function createApiHandlers(opts: {
           ok: true,
           target: "agent",
           path,
-          responsePath: replies.path,
+          responsePath: transcript.path,
           intent,
           finish,
         };
