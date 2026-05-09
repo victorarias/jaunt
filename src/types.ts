@@ -110,6 +110,24 @@ export type Draft = {
 };
 
 export type SubmitTarget = "github" | "agent";
+export type SubmitIntent = "review" | "question";
+
+export type TranscriptEntry = {
+  /** "user" = a question the reviewer sent via Ask agent. "agent" = a reply the agent appended to the .agent.md file. */
+  role: "user" | "agent";
+  body: string;
+  /** ISO timestamp from the section header. Used for ordering. */
+  at: string;
+};
+
+export type AgentTranscript = {
+  /** Path to the agent reply file on disk — same string the CLI prints as `responsePath`. */
+  path: string;
+  /** Merged user questions + agent replies, oldest-first. */
+  entries: TranscriptEntry[];
+  /** ISO timestamp of the most recent entry, or null if the transcript is empty. */
+  updatedAt: string | null;
+};
 
 /**
  * `finish` carries the user's "end review after this submit" toggle. When
@@ -120,5 +138,12 @@ export type SubmitTarget = "github" | "agent";
  */
 export type SubmitResult =
   | { ok: true; target: "github"; url: string; finish: boolean }
-  | { ok: true; target: "agent"; path: string; finish: boolean }
+  | {
+      ok: true;
+      target: "agent";
+      path: string;
+      responsePath: string;
+      intent: SubmitIntent;
+      finish: boolean;
+    }
   | { ok: false; error: string };

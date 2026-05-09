@@ -1,4 +1,5 @@
 export type {
+  AgentTranscript,
   Annotation,
   Comment,
   Draft,
@@ -16,4 +17,13 @@ export type {
   SubmitResult,
   SubmitTarget,
   TourMeta,
+  TranscriptEntry,
 } from "../../src/types.ts";
+
+export type AgentAskContext = {
+  path: string;
+  lineStart?: number;
+  lineEnd?: number;
+  code?: string;
+  source: "quick" | "line-comment" | "annotation-reply";
+};

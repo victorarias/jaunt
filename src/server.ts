@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { createServer as createNetServer } from "node:net";
 import type { ApiDeps } from "./api-handlers.ts";
 import type { Tour } from "./tour.ts";
 import type { PRRef } from "./types.ts";
@@ -16,7 +17,7 @@ export type StartServerOptions = {
   open?: boolean;
   /** Bind to all interfaces. Default: false. */
   host?: boolean;
-  /** Port to listen on. 0 = pick a random free port. Default: 0. */
+  /** Port to listen on. 0 or omitted = pick a random free port. */
   port?: number;
   /** Called after a successful /api/submit, after the HTTP response flushes. */
   onSubmit?: SubmitHook;
@@ -33,6 +34,7 @@ export async function startServer(
 ): Promise<ServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const webRoot = join(here, "..", "web");
+  const port = opts.port && opts.port > 0 ? opts.port : await freePort();
 
   const viteServer = await createServer({
     root: webRoot,
@@ -48,8 +50,8 @@ export async function startServer(
       }),
     ],
     server: {
-      port: opts.port ?? 0,
-      strictPort: false,
+      port,
+      strictPort: true,
       open: opts.open ?? false,
       host: opts.host ? true : undefined,
       allowedHosts: opts.host ? true : undefined,
@@ -76,6 +78,23 @@ export async function startServer(
     viteServer,
     close: () => viteServer.close(),
   };
+}
+
+async function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createNetServer();
+    server.unref();
+    server.once("error", reject);
+    server.listen(0, () => {
+      const addr = server.address();
+      if (!addr || typeof addr !== "object") {
+        server.close(() => reject(new Error("freePort: no address")));
+        return;
+      }
+      const port = addr.port;
+      server.close(() => resolve(port));
+    });
+  });
 }
 
 function resolveUrl(server: ViteDevServer): string {

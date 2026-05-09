@@ -1,5 +1,5 @@
 import { memo } from "react";
-import type { Draft, PRFile } from "../types.ts";
+import type { AgentAskContext, Draft, PRFile } from "../types.ts";
 import { fileStateOf } from "../hooks/useDraft.ts";
 import { DiffView } from "./DiffView.tsx";
 import { ContentView } from "./ContentView.tsx";
@@ -19,6 +19,7 @@ type Props = {
   onNoteChange: (path: string, note: string) => void;
   onSetReply: (path: string, annotationIdx: number, text: string) => void;
   onSetLineComment: (path: string, line: number, text: string) => void;
+  onAskAgent: (context: AgentAskContext, body: string) => Promise<void>;
 };
 
 function FileCardImpl({
@@ -34,6 +35,7 @@ function FileCardImpl({
   onNoteChange,
   onSetReply,
   onSetLineComment,
+  onAskAgent,
 }: Props) {
   const { reviewed, note, replies, lineComments } = fileStateOf(
     draft,
@@ -44,6 +46,25 @@ function FileCardImpl({
     onSetReply(file.path, idx, text);
   const handleSetLineComment = (line: number, text: string) =>
     onSetLineComment(file.path, line, text);
+  const handleAskLine = (line: number, code: string, body: string) =>
+    onAskAgent(
+      { path: file.path, lineStart: line, lineEnd: line, code, source: "line-comment" },
+      body,
+    );
+  const handleAskAnnotation = (idx: number, body: string) => {
+    const annotation = file.annotations[idx];
+    if (!annotation) return Promise.resolve();
+    return onAskAgent(
+      {
+        path: file.path,
+        lineStart: annotation.lineStart,
+        lineEnd: annotation.lineEnd,
+        code: codeForRange(file.content, annotation.lineStart, annotation.lineEnd),
+        source: "annotation-reply",
+      },
+      body,
+    );
+  };
 
   return (
     <div
@@ -119,6 +140,8 @@ function FileCardImpl({
             onSetReply={handleSetReply}
             lineComments={lineComments}
             onSetLineComment={handleSetLineComment}
+            onAskAgentLine={handleAskLine}
+            onAskAgentAnnotation={handleAskAnnotation}
           />
         ) : (
           <DiffView
@@ -129,6 +152,8 @@ function FileCardImpl({
             onSetReply={handleSetReply}
             lineComments={lineComments}
             onSetLineComment={handleSetLineComment}
+            onAskAgentLine={handleAskLine}
+            onAskAgentAnnotation={handleAskAnnotation}
           />
         ))}
 
@@ -165,7 +190,17 @@ export const FileCard = memo(FileCardImpl, (prev, next) => {
     prev.onNoteChange === next.onNoteChange &&
     prev.onSetReply === next.onSetReply &&
     prev.onSetLineComment === next.onSetLineComment &&
+    prev.onAskAgent === next.onAskAgent &&
     prev.draft.fileStates[prev.file.path] ===
       next.draft.fileStates[next.file.path]
   );
 });
+
+function codeForRange(
+  content: string | null,
+  start: number,
+  end: number,
+): string | undefined {
+  if (content === null) return undefined;
+  return content.split("\n").slice(start - 1, end).join("\n");
+}

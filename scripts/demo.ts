@@ -11,7 +11,12 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { ApiDeps } from "../src/api-handlers.ts";
 import { clearDraft, loadDraft, saveDraft } from "../src/drafts.ts";
-import { feedbackPath, writeFeedback } from "../src/feedback.ts";
+import {
+  clearAgentReplies,
+  feedbackPath,
+  readAgentTranscript,
+  writeFeedback,
+} from "../src/feedback.ts";
 import { startServer } from "../src/server.ts";
 import type {
   Annotation,
@@ -418,10 +423,16 @@ async function main() {
       return `https://github.com/${ref.owner}/${ref.repo}/pull/${ref.number}#pullrequestreview-demo`;
     },
     writeFeedback: async (r, body, opts) => {
-      const path = await writeFeedback(r, body, { dir, finish: opts?.finish });
+      const path = await writeFeedback(r, body, {
+        dir,
+        finish: opts?.finish,
+        intent: opts?.intent,
+      });
       console.log(`\n[demo] wrote feedback → ${path}\n`);
       return path;
     },
+    loadAgentTranscript: (r) => readAgentTranscript(r, dir),
+    clearAgentReplies: (r) => clearAgentReplies(r, dir),
     loadDraft: (r) => loadDraft(r, { dir }),
     saveDraft: (d) => saveDraft(d, { dir }),
     clearDraft: (r) => clearDraft(r, { dir }),

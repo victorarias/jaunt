@@ -8,7 +8,12 @@ export type { Verdict };
 
 export type SubmitOutcome =
   | { target: "github"; url: string; finish: boolean }
-  | { target: "agent"; path: string; finish: boolean };
+  | {
+      target: "agent";
+      path: string;
+      responsePath: string;
+      finish: boolean;
+    };
 
 type Props = {
   files: PRFile[];

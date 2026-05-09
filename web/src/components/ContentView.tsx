@@ -17,8 +17,10 @@ type Props = {
   highlighter: Highlighter | null;
   replies: Record<string, string>;
   onSetReply: (annotationIdx: number, text: string) => void;
+  onAskAgentAnnotation: (annotationIdx: number, text: string) => Promise<void>;
   lineComments: Record<string, string>;
   onSetLineComment: (line: number, text: string) => void;
+  onAskAgentLine: (line: number, code: string, text: string) => Promise<void>;
 };
 
 type LineAnnotation = { index: number; annotation: Annotation };
@@ -29,8 +31,10 @@ export function ContentView({
   highlighter,
   replies,
   onSetReply,
+  onAskAgentAnnotation,
   lineComments,
   onSetLineComment,
+  onAskAgentLine,
 }: Props) {
   const lang = resolveLang(file.language);
 
@@ -130,6 +134,7 @@ export function ContentView({
                 index={index}
                 reply={replies[String(index)] ?? ""}
                 onReplyChange={onSetReply}
+                onAskAgent={onAskAgentAnnotation}
               />
             ))}
             {formOpen && (
@@ -138,6 +143,7 @@ export function ContentView({
                 text={lineComments[String(lineNum)] ?? ""}
                 onChange={(t) => onSetLineComment(lineNum, t)}
                 onClose={() => closeLine(lineNum)}
+                onAskAgent={(t) => onAskAgentLine(lineNum, content, t)}
                 autoFocus={openLines.has(lineNum) && !hasComment}
               />
             )}

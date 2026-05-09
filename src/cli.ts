@@ -11,7 +11,11 @@ import {
   submitReviewComment,
 } from "./gh.ts";
 import { clearDraft, loadDraft, saveDraft } from "./drafts.ts";
-import { writeFeedback } from "./feedback.ts";
+import {
+  clearAgentReplies,
+  readAgentTranscript,
+  writeFeedback,
+} from "./feedback.ts";
 import type { ApiDeps } from "./api-handlers.ts";
 import { startServer } from "./server.ts";
 import { loadTour, resolveTourPath, type Tour } from "./tour.ts";
@@ -90,6 +94,8 @@ async function main() {
     fetchFileContent,
     submitReviewComment,
     writeFeedback,
+    loadAgentTranscript: readAgentTranscript,
+    clearAgentReplies,
     loadDraft,
     saveDraft,
     clearDraft,
@@ -109,8 +115,10 @@ async function main() {
       // `finish=` suffix tells the agent whether the review is over or the
       // user intends to keep submitting — process exit is still authoritative.
       if (result.target === "agent") {
+        const signal =
+          result.intent === "question" ? "AGENT_ASK_READY" : "FEEDBACK_READY";
         console.log(
-          `jaunt: FEEDBACK_READY path=${result.path} finish=${result.finish}`,
+          `jaunt: ${signal} path=${result.path} responsePath=${result.responsePath} finish=${result.finish}`,
         );
       } else {
         console.log(

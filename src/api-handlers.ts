@@ -1,12 +1,14 @@
 import { applyTour, type Tour } from "./tour.ts";
 import { createContentResolver, type RemoteFetch } from "./content.ts";
 import type {
+  AgentTranscript,
   ContentResult,
   Draft,
   FileError,
   PRPayload,
   PRRef,
   SubmitResult,
+  SubmitIntent,
   SubmitTarget,
 } from "./types.ts";
 
@@ -17,8 +19,10 @@ export type ApiDeps = {
   writeFeedback: (
     ref: PRRef,
     body: string,
-    opts?: { finish?: boolean },
+    opts?: { finish?: boolean; intent?: SubmitIntent },
   ) => Promise<string>;
+  loadAgentTranscript: (ref: PRRef) => Promise<AgentTranscript>;
+  clearAgentReplies: (ref: PRRef) => Promise<void>;
   loadDraft: (ref: PRRef) => Promise<Draft>;
   saveDraft: (draft: Draft) => Promise<Draft>;
   clearDraft: (ref: PRRef) => Promise<void>;
@@ -27,12 +31,14 @@ export type ApiDeps = {
 export type ApiHandlers = {
   getPR(): Promise<PRPayload>;
   refetchContent(paths: string[]): Promise<PRPayload>;
+  getAgentTranscript(): Promise<AgentTranscript>;
   getDraft(): Promise<Draft>;
   putDraft(draft: Draft): Promise<Draft>;
   submit(
     body: string,
     target: SubmitTarget,
     finish: boolean,
+    intent?: SubmitIntent,
   ): Promise<SubmitResult>;
 };
 
@@ -108,18 +114,36 @@ export function createApiHandlers(opts: {
   return {
     getPR,
     refetchContent,
+    getAgentTranscript: () => opts.deps.loadAgentTranscript(opts.ref),
     getDraft: () => opts.deps.loadDraft(opts.ref),
     putDraft: (draft) => opts.deps.saveDraft(draft),
-    async submit(body, target, finish) {
+    async submit(body, target, finish, intent = "review") {
       try {
         if (target === "github") {
           const url = await opts.deps.submitReviewComment(opts.ref, body);
-          if (finish) await opts.deps.clearDraft(opts.ref);
+          if (finish) {
+            await opts.deps.clearDraft(opts.ref);
+            await opts.deps.clearAgentReplies(opts.ref);
+          }
           return { ok: true, target: "github", url, finish };
         }
-        const path = await opts.deps.writeFeedback(opts.ref, body, { finish });
-        if (finish) await opts.deps.clearDraft(opts.ref);
-        return { ok: true, target: "agent", path, finish };
+        const path = await opts.deps.writeFeedback(opts.ref, body, {
+          finish,
+          intent,
+        });
+        const transcript = await opts.deps.loadAgentTranscript(opts.ref);
+        if (finish) {
+          await opts.deps.clearDraft(opts.ref);
+          await opts.deps.clearAgentReplies(opts.ref);
+        }
+        return {
+          ok: true,
+          target: "agent",
+          path,
+          responsePath: transcript.path,
+          intent,
+          finish,
+        };
       } catch (err) {
         return {
           ok: false,

@@ -356,13 +356,20 @@ Immediately after launching, tail the backgrounded task's output until you see t
 **Submit sentinels + exit** — every time the reviewer submits, `jaunt` prints one of these sentinel lines with a `finish=` suffix. The server exits only when `finish=true` — that's the reviewer ticking "End review after this submit" in the dialog, which is the one signal that actually ends the session:
 
 ```
-jaunt: FEEDBACK_READY path=~/.jaunt/owner_repo_123.feedback.md finish=false
-jaunt: FEEDBACK_READY path=~/.jaunt/owner_repo_123.feedback.md finish=true
+jaunt: FEEDBACK_READY path=~/.jaunt/owner_repo_123.feedback.md responsePath=~/.jaunt/owner_repo_123.agent.md finish=false
+jaunt: FEEDBACK_READY path=~/.jaunt/owner_repo_123.feedback.md responsePath=~/.jaunt/owner_repo_123.agent.md finish=true
+jaunt: AGENT_ASK_READY path=~/.jaunt/owner_repo_123.feedback.md responsePath=~/.jaunt/owner_repo_123.agent.md finish=false
 jaunt: REVIEW_POSTED url=https://github.com/owner/repo/pull/123#... finish=false
 jaunt: REVIEW_POSTED url=https://github.com/owner/repo/pull/123#... finish=true
 ```
 
-Mid-review submits (`finish=false`) append a new timestamped section to the feedback file; the reviewer can submit multiple rounds before ending. Treat `finish=false` sentinels as informational — the review isn't over.
+`responsePath=~/.jaunt/owner_repo_123.agent.md` is the agent-to-reviewer
+reply channel. The browser polls it while the server is running and renders
+any Markdown you append there in the tour.
+
+`AGENT_ASK_READY` is the lightweight back-channel signal. It fires when the reviewer uses Ask agent from the drive bar, an annotation reply, or a line comment. Read the latest `## question` section from the feedback file and append a short Markdown answer to `responsePath`.
+
+Mid-review review submits (`FEEDBACK_READY …finish=false`) append a new timestamped section to the feedback file; the reviewer can submit multiple rounds before ending. Treat `finish=false` sentinels as informational unless the latest section is a direct question — the review isn't over.
 
 **Process exit is the authoritative "done" signal.** It only fires after a `finish=true` submit.
 
@@ -372,7 +379,7 @@ Both modes: background the launch, tail for `LISTENING`, report the URL. After t
 
 - **hand-off**: done. The backgrounded process will exit on its own when the user ends the review; you don't need to watch for it.
 
-- **wait-and-act**: watch the task until **the process exits**. Intermediate `finish=false` sentinel lines are informational only — the review is still in progress. When the process exits (which only happens after a `finish=true` submit), grep the final output for which path it took:
+- **wait-and-act**: watch the task until **the process exits**. When you see `AGENT_ASK_READY`, read the latest `## question` section in the feedback file and append a concise Markdown answer to the `responsePath` file from the sentinel, using a timestamped section like `## agent reply · <ISO time>`. Do not relaunch or make code changes from an ask unless the reviewer explicitly asked for that. Intermediate `FEEDBACK_READY …finish=false` lines mean the review is still in progress. When the process exits (which only happens after a `finish=true` submit), grep the final output for which path it took:
   1. Ended with `FEEDBACK_READY …finish=true`: read `~/.jaunt/<owner>_<repo>_<num>.feedback.md` (which contains every round the reviewer submitted, ordered oldest-first), act on the feedback. After you're done, **re-launch on the same port**: `bunx @victorarias/jaunt <ref> --port <N>` where `<N>` is the port from the original `LISTENING` line (again as a backgrounded task, again tail for the new `LISTENING`). Tell the user the server's back up and to refresh their browser tab to see the updated code and leave follow-up comments.
   2. Ended with `REVIEW_POSTED …finish=true`: user posted the final round to GitHub — acknowledge, no local action, no re-launch needed.
   3. Long silence with no exit: the user is either still reviewing or closed the browser without ending. Ask before killing — don't assume abandonment.
